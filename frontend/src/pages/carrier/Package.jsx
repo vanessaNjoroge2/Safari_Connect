@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MapView from '../../components/MapView';
-import { Steps, AiBanner, showToast } from '../../components/UI';
+import { Steps, AiBanner } from '../../components/UI';
 
 const VEHICLE_TYPES = [
   { id: 'motorbike', icon: '🏍️', label: 'Motorbike', cap: 'Up to 10 kg', price: 'KES 250–450', eta: '15–25 min', color: '#0ea371' },

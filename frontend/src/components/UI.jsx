@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react';
+import { setToastHandler, showToast } from './toast';
+
+// eslint-disable-next-line react-refresh/only-export-components
+export { showToast };
 
 // ---- TOAST ----
-let toastFn = null;
 export function Toast() {
   const [toast, setToast] = useState(null);
   useEffect(() => {
-    toastFn = (msg, type = 'success') => {
+    setToastHandler((msg, type = 'success') => {
       setToast({ msg, type });
       setTimeout(() => setToast(null), 2600);
-    };
+    });
+    return () => setToastHandler(null);
   }, []);
   if (!toast) return null;
   const bg = toast.type === 'success' ? '#0ea371' : toast.type === 'error' ? '#ef4444' : '#f59e0b';
   return <div className="toast" style={{ background: bg }}>{toast.msg}</div>;
 }
-export const showToast = (msg, type) => toastFn?.(msg, type);
 
 // ---- MODAL ----
 export function Modal({ open, onClose, title, children, width = 520 }) {

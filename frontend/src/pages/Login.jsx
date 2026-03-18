@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import Topbar from '../components/Topbar';
+import { showToast } from '../components/UI';
 
 const ROLES = [
   { id: 'user',  icon: '👤', title: 'Passenger',     desc: 'Search, book & pay for trips' },
@@ -12,14 +13,56 @@ const ROLES = [
 export default function Login() {
   const [selectedRole, setSelectedRole] = useState('user');
   const [mode, setMode] = useState('signin');
-  const { login } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const [firstName, setFirstName] = useState('Jane');
+  const [lastName, setLastName] = useState('Mwangi');
+  const [email, setEmail] = useState('demo@safiri.co.ke');
+  const [phone, setPhone] = useState('0712345678');
+  const [password, setPassword] = useState('demo123');
+  const [saccoName, setSaccoName] = useState('Modern Coast Sacco');
+
+  const { login, register } = useAuth();
   const navigate = useNavigate();
 
   const PATHS = { user: '/user', owner: '/owner', admin: '/admin' };
 
-  const doLogin = (role) => {
-    login(role || selectedRole);
-    navigate(PATHS[role || selectedRole]);
+  const navigateByRole = (role) => {
+    navigate(PATHS[role] || '/user');
+  };
+
+  const doLogin = async (role) => {
+    setSubmitting(true);
+    try {
+      if (role) {
+        const user = await login(role);
+        navigateByRole(user.role);
+        return;
+      }
+
+      if (mode === 'signin') {
+        const user = await login({ email, password });
+        showToast('Login successful');
+        navigateByRole(user.role);
+      } else {
+        const payload = {
+          firstName,
+          lastName,
+          email,
+          phone,
+          password,
+          role: selectedRole === 'owner' ? 'OWNER' : 'USER',
+          ...(selectedRole === 'owner' ? { saccoName } : {})
+        };
+
+        const user = await register(payload);
+        showToast('Account created successfully');
+        navigateByRole(user.role);
+      }
+    } catch (error) {
+      showToast(error.message || 'Authentication failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -68,13 +111,21 @@ export default function Login() {
             </div>
             {mode === 'signup' && (
               <div className="form-row" style={{ marginBottom: 14 }}>
-                <div className="form-group" style={{ margin: 0 }}><label className="form-label">First name</label><input className="form-input" placeholder="Jane"/></div>
-                <div className="form-group" style={{ margin: 0 }}><label className="form-label">Last name</label><input className="form-input" placeholder="Mwangi"/></div>
+                <div className="form-group" style={{ margin: 0 }}><label className="form-label">First name</label><input className="form-input" value={firstName} onChange={(e)=>setFirstName(e.target.value)} placeholder="Jane"/></div>
+                <div className="form-group" style={{ margin: 0 }}><label className="form-label">Last name</label><input className="form-input" value={lastName} onChange={(e)=>setLastName(e.target.value)} placeholder="Mwangi"/></div>
               </div>
             )}
-            <div className="form-group"><label className="form-label">Email address</label><input className="form-input" defaultValue="demo@safiri.co.ke"/></div>
-            <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" defaultValue="demo123"/></div>
-            <button className="btn btn-primary btn-full" style={{ marginTop: 4, padding: 11 }} onClick={() => doLogin()}>Continue →</button>
+            <div className="form-group"><label className="form-label">Email address</label><input className="form-input" value={email} onChange={(e)=>setEmail(e.target.value)} /></div>
+            {mode === 'signup' && (
+              <>
+                <div className="form-group"><label className="form-label">Phone number</label><input className="form-input" value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="0712345678"/></div>
+                {selectedRole === 'owner' && (
+                  <div className="form-group"><label className="form-label">Sacco name</label><input className="form-input" value={saccoName} onChange={(e)=>setSaccoName(e.target.value)} /></div>
+                )}
+              </>
+            )}
+            <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} /></div>
+            <button className="btn btn-primary btn-full" style={{ marginTop: 4, padding: 11 }} onClick={() => doLogin()} disabled={submitting}>{submitting ? 'Please wait...' : 'Continue →'}</button>
             <div style={{ textAlign: 'center', margin: '16px 0', fontSize: 11, color: 'var(--gray-400)' }}>— or use a demo account —</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {ROLES.map(r => (
