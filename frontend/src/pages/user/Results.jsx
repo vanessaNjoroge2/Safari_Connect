@@ -1,23 +1,99 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AiBanner, Badge } from '../../components/UI';
 
 const buses = [
-  { sacco:'Modern Coast Sacco', plate:'KBZ 123A · 50 seats · ⭐ 4.8', price:'KES 1,050', priceLabel:'AI dynamic price', dep:'8:00 AM', arr:'11:30 AM', dur:'3h 30m', seats:18, classes:['Economy','Business','VIP'], left:'green' },
-  { sacco:'Easy Coach Sacco', plate:'KCA 456B · 50 seats · ⭐ 4.6', price:'KES 850', priceLabel:'Standard fare', dep:'10:00 AM', arr:'1:30 PM', dur:'3h 30m', seats:4, classes:['Economy','Business'], left:'amber' },
-  { sacco:'Eldoret Express', plate:'KDB 789C · 33 seats · ⭐ 4.3', price:'KES 780', priceLabel:'Budget fare', dep:'2:00 PM', arr:'5:45 PM', dur:'3h 45m', seats:27, classes:['Economy'], left:'green', dim:true },
+  { sacco:'Modern Coast Sacco', plate:'KBZ 123A · 50 seats · ⭐ 4.8', price:'KES 1,050', priceLabel:'AI dynamic price', dep:'8:00 AM', arr:'11:30 AM', dur:'3h 30m', seats:18, classes:['Economy','Business','VIP'], left:'green', priceNum:1050 },
+  { sacco:'Easy Coach Sacco', plate:'KCA 456B · 50 seats · ⭐ 4.6', price:'KES 850', priceLabel:'Standard fare', dep:'10:00 AM', arr:'1:30 PM', dur:'3h 30m', seats:4, classes:['Economy','Business'], left:'amber', priceNum:850 },
+  { sacco:'Eldoret Express', plate:'KDB 789C · 33 seats · ⭐ 4.3', price:'KES 780', priceLabel:'Budget fare', dep:'2:00 PM', arr:'5:45 PM', dur:'3h 45m', seats:27, classes:['Economy'], left:'green', dim:true, priceNum:780 },
 ];
 
 export default function Results() {
   const navigate = useNavigate();
+  const [searchSacco, setSearchSacco] = useState('');
+  const [maxPrice, setMaxPrice] = useState(2000);
+  const [selectedClass, setSelectedClass] = useState('');
+
+  const filteredBuses = buses.filter(b => {
+    const matchesSacco = b.sacco.toLowerCase().includes(searchSacco.toLowerCase());
+    const matchesPrice = b.priceNum <= maxPrice;
+    const matchesClass = !selectedClass || b.classes.includes(selectedClass);
+    return matchesSacco && matchesPrice && matchesClass;
+  });
+
   return (
     <div>
       <div className="page-header">
-        <div><div className="page-title">Nairobi → Nakuru</div><div className="page-sub">Wed 18 Mar · Buses · 3 results</div></div>
+        <div><div className="page-title">Nairobi → Nakuru</div><div className="page-sub">Wed 18 Mar · Buses · {filteredBuses.length} results</div></div>
         <div className="page-actions"><button className="btn btn-sm" onClick={() => navigate('/user')}>Change search</button></div>
       </div>
       <div className="page-body">
+        {/* Hero search bar */}
+        <div className="search-hero">
+          <div className="search-hero-icon">🔍</div>
+          <input
+            className="search-hero-input"
+            type="text"
+            placeholder="Search trips by SACCO name, route, or time..."
+            value={searchSacco}
+            onChange={(e) => setSearchSacco(e.target.value)}
+            autoFocus
+          />
+          {searchSacco && (
+            <button className="search-hero-clear" onClick={() => setSearchSacco('')}>✕</button>
+          )}
+        </div>
+
         <AiBanner text="<strong>High demand detected.</strong> Fares dynamically priced up 24% today — 89% of seats already filled. Book now to secure your seat." />
-        {buses.map((b,i) => (
+        
+        <div style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: 'var(--gray-700)' }}>Filter trips</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Search SACCO</label>
+              <input 
+                className="form-input" 
+                placeholder="SACCO name..." 
+                value={searchSacco}
+                onChange={(e) => setSearchSacco(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Max price: KES {maxPrice}</label>
+              <input 
+                type="range" 
+                min="500" 
+                max="2000" 
+                step="50"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(Number(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Seat class</label>
+              <select 
+                className="form-input" 
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+              >
+                <option value="">All classes</option>
+                <option value="Economy">Economy</option>
+                <option value="Business">Business</option>
+                <option value="VIP">VIP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {filteredBuses.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--gray-400)' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>No trips match your filters</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Try adjusting your search criteria</div>
+          </div>
+        ) : (
+          filteredBuses.map((b,i) => (
           <div key={i} className="bus-card" style={b.dim?{opacity:.75}:{}}>
             <div className="bus-header">
               <div><div className="sacco-name">{b.sacco}</div><div style={{fontSize:11,color:'var(--gray-400)',marginTop:2}}>{b.plate}</div></div>
@@ -36,7 +112,8 @@ export default function Results() {
               <button className={`btn${i===0?' btn-primary':''}`} style={{marginLeft:'auto'}} onClick={() => navigate('/user/seat')}>Select bus →</button>
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
     </div>
   );

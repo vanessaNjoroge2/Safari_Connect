@@ -1,22 +1,13 @@
 import { NavLink } from 'react-router-dom';
 
 const USER_NAV = [
-  { section: 'Booking' },
   { to: '/user', label: 'Home', icon: '🏠', end: true },
-  { to: '/user/results', label: 'Search trips', icon: '🔍' },
-  { to: '/user/seat', label: 'Seat selection', icon: '💺' },
-  { to: '/user/booking', label: 'Confirm booking', icon: '📋' },
-  { to: '/user/payment', label: 'Payment', icon: '💳' },
-  { to: '/user/ticket', label: 'My ticket', icon: '🎫' },
-  { section: 'Carrier Services' },
-  { to: '/carrier', label: 'Carrier home (dashboard)', icon: '📦', end: true },
-  { to: '/carrier/package', label: 'Other carrier services', icon: '📬' },
-  { to: '/carrier/movers', label: 'Other carrier services', icon: '🚛' },
-  { to: '/carrier/courier', label: 'Other carrier services', icon: '✉️' },
-  { to: '/carrier/track/PKG-001', label: 'Other carrier services', icon: '📡' },
-  { section: 'Account' },
-  { to: '/user/mybookings', label: 'My bookings', icon: '📂' },
+  { to: '/user/results', label: 'Search Trips', icon: '🔍' },
+  { to: '/user/seat', label: 'Seat Selection', icon: '💺' },
+  { to: '/user/ticket', label: 'My Ticket', icon: '🎫' },
+  { to: '/user/mybookings', label: 'My Bookings', icon: '📂' },
   { to: '/user/profile', label: 'Profile', icon: '👤' },
+  { to: '/user/payments', label: 'Payments', icon: '💳' },
 ];
 
 const OWNER_NAV = [

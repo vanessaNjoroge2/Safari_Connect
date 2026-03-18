@@ -5,9 +5,9 @@ import Topbar from '../components/Topbar';
 import { showToast } from '../components/UI';
 
 const ROLES = [
-  { id: 'user',  icon: '👤', title: 'Passenger',     desc: 'Search, book & pay for trips' },
-  { id: 'owner', icon: '🏢', title: 'SACCO Owner',   desc: 'Manage fleet, routes & bookings' },
-  { id: 'admin', icon: '🛡️', title: 'Super Admin',   desc: 'Platform governance & analytics' },
+  { id: 'user', icon: '👤', title: 'Passenger', desc: 'Search, book & pay for trips' },
+  { id: 'owner', icon: '🏢', title: 'SACCO Owner', desc: 'Manage fleet, routes & bookings' },
+  { id: 'admin', icon: '🛡️', title: 'Super Admin', desc: 'Platform governance & analytics' },
 ];
 
 export default function Login() {
@@ -103,28 +103,28 @@ export default function Login() {
           <div className="auth-card" style={{ width: 390, flexShrink: 0 }}>
             <div className="auth-title">{mode === 'signin' ? 'Welcome back' : 'Create account'}</div>
             <div className="auth-sub">
-              {mode === 'signin' ? `Sign in as ${ROLES.find(r=>r.id===selectedRole)?.title}` : 'Join SafiriConnect today'}
+              {mode === 'signin' ? `Sign in as ${ROLES.find(r => r.id === selectedRole)?.title}` : 'Join SafiriConnect today'}
             </div>
             <div className="auth-toggle">
-              <button className={`auth-toggle-btn${mode==='signin'?' active':''}`} onClick={() => setMode('signin')}>Sign in</button>
-              <button className={`auth-toggle-btn${mode==='signup'?' active':''}`} onClick={() => setMode('signup')}>Sign up</button>
+              <button className={`auth-toggle-btn${mode === 'signin' ? ' active' : ''}`} onClick={() => setMode('signin')}>Sign in</button>
+              <button className={`auth-toggle-btn${mode === 'signup' ? ' active' : ''}`} onClick={() => setMode('signup')}>Sign up</button>
             </div>
             {mode === 'signup' && (
               <div className="form-row" style={{ marginBottom: 14 }}>
-                <div className="form-group" style={{ margin: 0 }}><label className="form-label">First name</label><input className="form-input" value={firstName} onChange={(e)=>setFirstName(e.target.value)} placeholder="Jane"/></div>
-                <div className="form-group" style={{ margin: 0 }}><label className="form-label">Last name</label><input className="form-input" value={lastName} onChange={(e)=>setLastName(e.target.value)} placeholder="Mwangi"/></div>
+                <div className="form-group" style={{ margin: 0 }}><label className="form-label">First name</label><input className="form-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" /></div>
+                <div className="form-group" style={{ margin: 0 }}><label className="form-label">Last name</label><input className="form-input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Mwangi" /></div>
               </div>
             )}
-            <div className="form-group"><label className="form-label">Email address</label><input className="form-input" value={email} onChange={(e)=>setEmail(e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Email address</label><input className="form-input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
             {mode === 'signup' && (
               <>
-                <div className="form-group"><label className="form-label">Phone number</label><input className="form-input" value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="0712345678"/></div>
+                <div className="form-group"><label className="form-label">Phone number</label><input className="form-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712345678" /></div>
                 {selectedRole === 'owner' && (
-                  <div className="form-group"><label className="form-label">Sacco name</label><input className="form-input" value={saccoName} onChange={(e)=>setSaccoName(e.target.value)} /></div>
+                  <div className="form-group"><label className="form-label">Sacco name</label><input className="form-input" value={saccoName} onChange={(e) => setSaccoName(e.target.value)} /></div>
                 )}
               </>
             )}
-            <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
             <button className="btn btn-primary btn-full" style={{ marginTop: 4, padding: 11 }} onClick={() => doLogin()} disabled={submitting}>{submitting ? 'Please wait...' : 'Continue →'}</button>
             <div style={{ textAlign: 'center', margin: '16px 0', fontSize: 11, color: 'var(--gray-400)' }}>— or use a demo account —</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

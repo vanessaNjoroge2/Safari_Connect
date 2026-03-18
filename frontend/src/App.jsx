@@ -13,6 +13,7 @@ import Payment from './pages/user/Payment';
 import Ticket from './pages/user/Ticket';
 import MyBookings from './pages/user/MyBookings';
 import Profile from './pages/user/Profile';
+import UserPayments from './pages/user/Payments';
 
 import CarrierHome from './pages/carrier/Home';
 import PackageDelivery from './pages/carrier/Package';
@@ -53,6 +54,7 @@ function UserSection() {
         <Route path="ticket" element={<Ticket />} />
         <Route path="mybookings" element={<MyBookings />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="payments" element={<UserPayments />} />
       </Routes>
     </ProtectedLayout>
   );
