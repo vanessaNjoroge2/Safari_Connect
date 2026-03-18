@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '../../components/UI';
+import { requestSafe } from '../../lib/api';
 
 const PAYMENTS = [
   { id: 'PAY-001', date: '2026-03-18', route: 'Nairobi → Nakuru', amount: 1050, ref: 'SCI3K7M9XZ', status: 'Completed', method: 'M-Pesa' },
@@ -15,6 +16,29 @@ const STATUS_VARIANT = { Completed: 'green', Pending: 'amber', Failed: 'red' };
 
 export default function UserPayments() {
   const [filter, setFilter] = useState('All');
+  const [aiHint, setAiHint] = useState('AI checks your payment patterns and highlights safer booking windows.');
+
+  useEffect(() => {
+    let mounted = true;
+    const loadHint = async () => {
+      const response = await requestSafe('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: 'Share one short payment safety tip for transport bookings in Kenya',
+          language: 'en'
+        })
+      });
+      const message = response?.data?.message || response?.message;
+      if (mounted && message) {
+        setAiHint(message);
+      }
+    };
+
+    loadHint();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filtered = filter === 'All' ? PAYMENTS : PAYMENTS.filter(p => p.status === filter);
   const total = PAYMENTS.filter(p => p.status === 'Completed').reduce((s, p) => s + p.amount, 0);
@@ -28,6 +52,10 @@ export default function UserPayments() {
         </div>
       </div>
       <div className="page-body">
+        <div className="card card-sm" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-400)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>AI Payment Insight</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{aiHint}</div>
+        </div>
         {/* Summary cards */}
         <div className="three-col" style={{ marginBottom: 24 }}>
           <div className="card card-sm" style={{ textAlign: 'center' }}>
