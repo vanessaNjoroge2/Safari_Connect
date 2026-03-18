@@ -10,24 +10,16 @@ export const registerUser = async (payload) => {
     phone,
     password,
     role = "USER",
-    saccoName,
   } = payload;
 
   const existingUser = await prisma.user.findFirst({
     where: {
-      OR: [
-        { email },
-        ...(phone ? [{ phone }] : []),
-      ],
+      OR: [{ email }, ...(phone ? [{ phone }] : [])],
     },
   });
 
   if (existingUser) {
     throw new Error("User with this email or phone already exists");
-  }
-
-  if (role === "OWNER" && !saccoName) {
-    throw new Error("Sacco name is required for owner registration");
   }
 
   const hashedPassword = await hashPassword(password);
@@ -43,9 +35,7 @@ export const registerUser = async (payload) => {
       ownerProfile:
         role === "OWNER"
           ? {
-              create: {
-                saccoName,
-              },
+              create: {},
             }
           : undefined,
     },

@@ -19,69 +19,224 @@ enum UserStatus {
   SUSPENDED
 }
 
-model User {
-  id            String      @id @default(uuid())
-  firstName     String
-  lastName      String
-  email         String      @unique
-  phone         String?     @unique
-  password      String
-  role          UserRole    @default(USER)
-  status        UserStatus  @default(ACTIVE)
-  isVerified    Boolean     @default(false)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+enum TripType {
+  ONE_WAY
+  ROUND_TRIP
+}
 
-  ownerProfile  OwnerProfile?
-  bookings      Booking[]
-  payments      Payment[]
+enum SeatClass {
+  BUSINESS
+  FIRST_CLASS
+  VIP
+}
+
+enum TripStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  MPESA
+  CASH
+  CARD
+}
+
+model User {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String        @unique
+  phone        String?       @unique
+  password     String
+  role         UserRole      @default(USER)
+  status       UserStatus    @default(ACTIVE)
+  isVerified   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  ownerProfile OwnerProfile?
+  bookings     Booking[]
+  payments     Payment[]
 }
 
 model OwnerProfile {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  saccoName      String
-  businessEmail  String?
-  businessPhone  String?
-  kraPin         String?
-  licenseNumber  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  businessEmail String?
+  businessPhone String?
+  kraPin        String?
+  licenseNumber String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  buses          Bus[]
-  trips          Trip[]
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sacco         Sacco?
 }
 
-model Booking {
+model Category {
   id          String   @id @default(uuid())
-  userId      String
+  name        String   @unique
+  slug        String   @unique
+  description String?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  saccos      Sacco[]
 }
 
-model Payment {
-  id          String   @id @default(uuid())
-  userId      String
-  createdAt   DateTime @default(now())
+model Sacco {
+  id            String       @id @default(uuid())
+  ownerProfileId String      @unique
+  categoryId    String
+  name          String
+  slug          String       @unique
+  logoUrl       String?
+  supportPhone  String?
+  supportEmail  String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ownerProfile  OwnerProfile @relation(fields: [ownerProfileId], references: [id], onDelete: Cascade)
+  category      Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  buses         Bus[]
+  trips         Trip[]
+
+  @@index([categoryId])
+}
+
+model Route {
+  id              String    @id @default(uuid())
+  origin          String
+  destination     String
+  distanceKm      Float?
+  estimatedTime   Int?      // in minutes
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  trips           Trip[]
+
+  @@index([origin, destination])
 }
 
 model Bus {
-  id            String       @id @default(uuid())
-  ownerProfileId String
+  id            String    @id @default(uuid())
+  saccoId       String
   name          String
-  createdAt     DateTime     @default(now())
+  plateNumber   String    @unique
+  seatCapacity  Int
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  ownerProfile  OwnerProfile @relation(fields: [ownerProfileId], references: [id], onDelete: Cascade)
+  sacco         Sacco     @relation(fields: [saccoId], references: [id], onDelete: Cascade)
+  seats         Seat[]
+  trips         Trip[]
+
+  @@index([saccoId])
+}
+
+model Seat {
+  id            String    @id @default(uuid())
+  busId         String
+  seatNumber    String
+  seatClass     SeatClass
+  price         Decimal   @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bus           Bus       @relation(fields: [busId], references: [id], onDelete: Cascade)
+  bookings      Booking[]
+
+  @@unique([busId, seatNumber])
+  @@index([busId, seatClass])
 }
 
 model Trip {
-  id            String       @id @default(uuid())
-  ownerProfileId String
-  createdAt     DateTime     @default(now())
+  id             String      @id @default(uuid())
+  saccoId        String
+  busId          String
+  routeId        String
+  tripType       TripType    @default(ONE_WAY)
+  departureTime  DateTime
+  arrivalTime    DateTime
+  basePrice      Decimal     @db.Decimal(10, 2)
+  status         TripStatus  @default(SCHEDULED)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  ownerProfile  OwnerProfile @relation(fields: [ownerProfileId], references: [id], onDelete: Cascade)
+  sacco          Sacco       @relation(fields: [saccoId], references: [id], onDelete: Cascade)
+  bus            Bus         @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route          Route       @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  bookings       Booking[]
+
+  @@index([saccoId])
+  @@index([busId])
+  @@index([routeId])
+  @@index([departureTime])
+  @@index([status])
+}
+
+model Booking {
+  id              String         @id @default(uuid())
+  userId          String
+  tripId          String
+  seatId          String
+  bookingCode     String         @unique
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String
+  nationalId      String
+  residence       String?
+  amount          Decimal        @db.Decimal(10, 2)
+  status          BookingStatus  @default(PENDING)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip            Trip           @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seat            Seat           @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  payment         Payment?
+
+  @@unique([tripId, seatId])
+  @@index([userId])
+  @@index([tripId])
+  @@index([status])
+}
+
+model Payment {
+  id                 String         @id @default(uuid())
+  userId             String
+  bookingId          String         @unique
+  method             PaymentMethod  @default(MPESA)
+  amount             Decimal        @db.Decimal(10, 2)
+  phoneNumber        String
+  transactionRef     String?        @unique
+  checkoutRequestId  String?        @unique
+  merchantRequestId  String?        @unique
+  status             PaymentStatus  @default(PENDING)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking            Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
 }

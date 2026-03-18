@@ -5,13 +5,13 @@
   "description": "```bash git clone https://github.com/vanessaNjoroge2/Safari_Connect.git cd backend ```",
   "main": "index.js",
   "scripts": {
-  "dev": "nodemon src/server.js",
-  "start": "node src/server.js",
-  "prisma:generate": "prisma generate",
-  "prisma:migrate": "prisma migrate dev",
-  "prisma:studio": "prisma studio",
-  "prisma:seed": "npx tsx prisma/seed.ts"
-},
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "npx tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^6.19.2",
     "accepts": "^2.0.0",
@@ -166,6 +166,7 @@
     "side-channel-weakmap": "^1.0.2",
     "signal-exit": "^4.1.0",
     "simple-update-notifier": "^2.0.0",
+    "slugify": "^1.6.8",
     "sqlstring": "^2.3.3",
     "statuses": "^2.0.2",
     "std-env": "^3.10.0",
