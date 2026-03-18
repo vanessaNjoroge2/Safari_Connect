@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import Topbar from './Topbar';
 import Sidebar from './Sidebar';
+import FloatingChatbot from './FloatingChatbot';
 
 export default function ProtectedLayout({ role, children }) {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ export default function ProtectedLayout({ role, children }) {
         <Sidebar role={role} />
         <main className="main-content">{children}</main>
       </div>
+      <FloatingChatbot role={role} />
     </>
   );
 }
