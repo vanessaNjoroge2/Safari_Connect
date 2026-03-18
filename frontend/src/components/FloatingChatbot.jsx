@@ -95,7 +95,9 @@ export default function FloatingChatbot({ role = 'user' }) {
       })
     });
 
-    const aiText = response?.data?.message || response?.message || 'I could not reach the AI service right now. Please try again shortly.';
+    const aiText = response?.data?.message
+      || response?.message
+      || 'AI service is currently offline. Ensure backend (3215) and AI agent (4100) are both running, then try again.';
     const aiMsg = { id: `a-${Date.now()}`, by: 'assistant', text: aiText };
     setMessages((prev) => [...prev, aiMsg]);
     if (!openRef.current) {

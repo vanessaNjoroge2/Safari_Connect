@@ -1461,9 +1461,12 @@ body {
 
 /* FLOATING CHATBOT */
 .chatbot-root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 1300;
 }
 
@@ -1490,6 +1493,9 @@ body {
 }
 
 .chatbot-panel {
+  position: absolute;
+  right: 0;
+  bottom: 72px;
   width: 348px;
   max-width: calc(100vw - 24px);
   background: linear-gradient(180deg, #ffffff 0%, #fbfefd 100%);
@@ -1504,6 +1510,7 @@ body {
 
 .chatbot-panel.closed {
   pointer-events: none;
+  visibility: hidden;
   opacity: 0;
   transform: translateY(10px) scale(.96);
 }
