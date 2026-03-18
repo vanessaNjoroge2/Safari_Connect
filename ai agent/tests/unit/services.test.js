@@ -5,6 +5,7 @@ const { recommendTrips } = require("../../src/modules/recommendation/service");
 const { scoreFraud } = require("../../src/modules/fraud/service");
 const { respondToPrompt } = require("../../src/modules/chat/service");
 const { handleVoiceRequest } = require("../../src/modules/voice/service");
+const { forecastPricing } = require("../../src/modules/pricing/service");
 
 test("recommendation returns top pick", () => {
   const result = recommendTrips({
@@ -17,6 +18,8 @@ test("recommendation returns top pick", () => {
 
   assert.ok(result.topPick);
   assert.equal(result.ranked.length, 2);
+  assert.ok(result.confidence >= 0);
+  assert.ok(result.signalsUsed.includes("price"));
 });
 
 test("fraud scoring returns decision", () => {
@@ -25,6 +28,8 @@ test("fraud scoring returns decision", () => {
   assert.ok(["allow", "review", "block"].includes(result.decision));
   assert.ok(result.fraudScore >= 0);
   assert.ok(result.fraudScore <= 1);
+  assert.ok(result.confidence >= 0.5);
+  assert.ok(Array.isArray(result.signalsUsed));
 });
 
 test("chat returns structured response", async () => {
@@ -33,6 +38,7 @@ test("chat returns structured response", async () => {
   assert.ok(result.intent);
   assert.ok(result.message);
   assert.ok(["gemini", "fallback"].includes(result.source));
+  assert.ok(result.disclaimer);
 });
 
 test("voice returns bilingual TTS metadata", async () => {
@@ -45,4 +51,24 @@ test("voice returns bilingual TTS metadata", async () => {
   assert.equal(result.language, "sw");
   assert.ok(result.replyText);
   assert.ok(result.ttsVoice);
+});
+
+test("pricing handles invalid departure time safely", () => {
+  const result = forecastPricing({ route: "Nairobi-Kisii", departureTime: "not-a-date", currentPrice: "1500" });
+
+  assert.equal(result.demandLevel, "unknown");
+  assert.equal(result.currentPrice, 1500);
+  assert.ok(result.predictedPrice >= 0);
+  assert.ok(result.confidence > 0);
+});
+
+test("voice transcript is sanitized", async () => {
+  const result = await handleVoiceRequest({
+    language: "en",
+    transcript: "  test\n\u0000message  ",
+    provider: "gemini"
+  });
+
+  assert.equal(result.transcript.includes("\n"), false);
+  assert.equal(result.transcript.includes("\u0000"), false);
 });

@@ -30,6 +30,10 @@ This folder contains only the AI-agent scope (Node.js), not the full platform UI
 - Accepts transcript input and returns TTS-ready response text.
 - Supports bilingual interaction for local accessibility.
 
+7. Unified decision assist (professional orchestration)
+- Combines recommendation, pricing, delay-risk, fraud, and chat into one response.
+- Returns decision summary with top action and passenger message.
+
 ## Stack
 
 - Runtime: Node.js
@@ -80,6 +84,7 @@ ai agent/
 - POST /v1/fraud/score
 - POST /v1/chat/respond
 - POST /v1/voice/respond
+- POST /v1/decision/assist
 
 ## Language Support
 
@@ -139,6 +144,14 @@ Voice (Swahili):
 curl -X POST http://localhost:4100/v1/voice/respond \
   -H "Content-Type: application/json" \
   -d "{\"transcript\":\"Nataka kwenda Kisii kesho asubuhi kwa chini ya 1500\",\"language\":\"sw\"}"
+```
+
+Unified Decision Assist:
+
+```bash
+curl -X POST http://localhost:4100/v1/decision/assist \
+  -H "Content-Type: application/json" \
+  -d "{\"trips\":[{\"id\":\"A\",\"price\":1400,\"travelMinutes\":420,\"reliabilityScore\":0.8}],\"intent\":{\"maxBudget\":1500,\"maxTravelMinutes\":500},\"route\":\"Nairobi-Kisii\",\"departureTime\":\"2026-03-20T07:30:00.000Z\",\"currentPrice\":1400,\"riskFactors\":{\"weatherRisk\":0.2,\"trafficRisk\":0.6,\"routeRisk\":0.3},\"fraudSignals\":{\"attemptsLast24h\":1,\"cardMismatch\":false,\"rapidRetries\":0,\"geoMismatch\":false},\"prompt\":\"Need the best morning option under 1500\",\"language\":\"en\"}"
 ```
 
 ## Hackathon Scope Note

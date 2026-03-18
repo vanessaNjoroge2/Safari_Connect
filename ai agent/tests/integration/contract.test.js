@@ -22,3 +22,10 @@ test("contract includes chat model metadata", () => {
   assert.ok(endpoint.output.includes("source"));
   assert.ok(endpoint.output.includes("modelUsed"));
 });
+
+test("contract includes professional decision assist endpoint", () => {
+  const endpoint = contract.endpoints.find((item) => item.path === "/v1/decision/assist");
+  assert.ok(endpoint);
+  assert.equal(endpoint.method, "POST");
+  assert.ok(endpoint.output.includes("summary.topAction"));
+});

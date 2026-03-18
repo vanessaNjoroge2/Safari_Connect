@@ -1,4 +1,5 @@
 const { geminiApiKey, geminiModel, geminiApiBaseUrl } = require("../config/env");
+const { sanitizeText } = require("./sanitize");
 
 function extractText(data) {
   const candidates = data && Array.isArray(data.candidates) ? data.candidates : [];
@@ -27,7 +28,7 @@ async function generateWithGemini({ prompt }) {
     contents: [
       {
         role: "user",
-        parts: [{ text: prompt }]
+        parts: [{ text: sanitizeText(prompt, 1800) }]
       }
     ],
     generationConfig: {
@@ -35,12 +36,15 @@ async function generateWithGemini({ prompt }) {
       maxOutputTokens: 220
     }
   };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
     const data = await response.json();
@@ -63,6 +67,8 @@ async function generateWithGemini({ prompt }) {
       modelUsed: geminiModel,
       error: error.message
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
