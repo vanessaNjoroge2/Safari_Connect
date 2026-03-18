@@ -8,6 +8,7 @@ const { predictDelayRisk } = require("./modules/prediction/service");
 const { scoreFraud } = require("./modules/fraud/service");
 const { respondToPrompt } = require("./modules/chat/service");
 const { handleVoiceRequest } = require("./modules/voice/service");
+const { planDispatch } = require("./modules/operations/service");
 const { ensureRequestId, buildMeta } = require("./shared/responseMeta");
 
 const app = express();
@@ -54,6 +55,10 @@ app.post("/v1/fraud/score", (req, res) => {
   res.json(scoreFraud(req.body || {}));
 });
 
+app.post("/v1/operations/dispatch-plan", (req, res) => {
+  res.json(planDispatch(req.body || {}));
+});
+
 app.post("/v1/decision/assist", async (req, res) => {
   try {
     const body = req.body || {};
@@ -67,12 +72,23 @@ app.post("/v1/decision/assist", async (req, res) => {
     });
     const delayRisk = predictDelayRisk(body.riskFactors || {});
     const fraud = scoreFraud(body.fraudSignals || {});
+    const operations = planDispatch({
+      route: body.route,
+      departureTime: body.departureTime,
+      totalSeats: body.totalSeats,
+      bookedSeats: body.bookedSeats,
+      noShowRate: body.noShowRate,
+      weatherRisk: body.riskFactors && body.riskFactors.weatherRisk,
+      trafficRisk: body.riskFactors && body.riskFactors.trafficRisk
+    });
     const chat = await respondToPrompt({ text: body.prompt, language });
 
     const summary = {
       topAction:
         fraud.decision === "block"
           ? "block_transaction"
+          : operations.action === "add_vehicle"
+            ? "add_standby_vehicle"
           : delayRisk.riskLevel === "high"
             ? "suggest_alternate_schedule"
             : recommendation.topPick
@@ -89,6 +105,7 @@ app.post("/v1/decision/assist", async (req, res) => {
         pricing,
         delayRisk,
         fraud,
+        operations,
         chat
       },
       summary

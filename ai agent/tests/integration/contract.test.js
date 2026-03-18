@@ -27,5 +27,14 @@ test("contract includes professional decision assist endpoint", () => {
   const endpoint = contract.endpoints.find((item) => item.path === "/v1/decision/assist");
   assert.ok(endpoint);
   assert.equal(endpoint.method, "POST");
+  assert.ok(endpoint.output.includes("modules.operations"));
   assert.ok(endpoint.output.includes("summary.topAction"));
+});
+
+test("contract includes operations dispatch planner endpoint", () => {
+  const endpoint = contract.endpoints.find((item) => item.path === "/v1/operations/dispatch-plan");
+  assert.ok(endpoint);
+  assert.equal(endpoint.method, "POST");
+  assert.ok(endpoint.output.includes("action"));
+  assert.ok(endpoint.output.includes("dispatchAdvice"));
 });

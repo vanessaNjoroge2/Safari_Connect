@@ -7,6 +7,7 @@ Build an autonomous decision-making AI agent for hackathon speed, focused only o
 - dynamic pricing insight
 - delay risk prediction
 - fraud/anomaly scoring
+- operations dispatch planning
 - chat + voice assistant (English and Swahili)
 
 ## Current Folder Structure
@@ -77,7 +78,12 @@ Build an autonomous decision-making AI agent for hackathon speed, focused only o
 - Input: `text`, `language`
 - Output: `intent`, `message`, `source`, `modelUsed`
 
-### 6) Voice Assistant (Bilingual)
+### 6) Operations Dispatch Planner
+- Endpoint: `POST /v1/operations/dispatch-plan`
+- Input: `route`, `departureTime`, `totalSeats`, `bookedSeats`, `noShowRate`, `weatherRisk`, `trafficRisk`
+- Output: `demandLevel`, `occupancyRate`, `riskLevel`, `combinedRisk`, `overbookingBuffer`, `action`, `dispatchAdvice`
+
+### 7) Voice Assistant (Bilingual)
 - Endpoint: `POST /v1/voice/respond`
 - Input: `transcript`, `language`
 - Output: `replyText`, `ttsVoice`, `source`, `modelUsed`, `inputMode`, `outputMode`, `note`

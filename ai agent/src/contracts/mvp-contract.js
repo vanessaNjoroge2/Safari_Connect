@@ -26,6 +26,12 @@ module.exports = {
       output: ["fraudScore", "decision", "confidence", "reason", "signalsUsed[]"]
     },
     {
+      path: "/v1/operations/dispatch-plan",
+      method: "POST",
+      input: ["route", "departureTime", "totalSeats", "bookedSeats", "noShowRate", "weatherRisk", "trafficRisk"],
+      output: ["demandLevel", "occupancyRate", "riskLevel", "combinedRisk", "overbookingBuffer", "action", "dispatchAdvice", "confidence", "signalsUsed[]"]
+    },
+    {
       path: "/v1/chat/respond",
       method: "POST",
       input: ["text", "language"],
@@ -40,8 +46,8 @@ module.exports = {
     {
       path: "/v1/decision/assist",
       method: "POST",
-      input: ["trips[]", "intent", "route", "departureTime", "currentPrice", "riskFactors", "fraudSignals", "prompt", "language"],
-      output: ["meta", "language", "modules", "summary.topAction", "summary.passengerMessage"]
+      input: ["trips[]", "intent", "route", "departureTime", "currentPrice", "totalSeats", "bookedSeats", "noShowRate", "riskFactors", "fraudSignals", "prompt", "language"],
+      output: ["meta", "language", "modules.operations", "summary.topAction", "summary.passengerMessage"]
     }
   ],
   supportedLanguages: ["en", "sw"]

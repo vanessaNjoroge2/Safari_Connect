@@ -6,6 +6,7 @@ const { scoreFraud } = require("../../src/modules/fraud/service");
 const { respondToPrompt } = require("../../src/modules/chat/service");
 const { handleVoiceRequest } = require("../../src/modules/voice/service");
 const { forecastPricing } = require("../../src/modules/pricing/service");
+const { planDispatch } = require("../../src/modules/operations/service");
 
 test("recommendation returns top pick", () => {
   const result = recommendTrips({
@@ -71,4 +72,23 @@ test("voice transcript is sanitized", async () => {
 
   assert.equal(result.transcript.includes("\n"), false);
   assert.equal(result.transcript.includes("\u0000"), false);
+});
+
+test("operations dispatch planner returns actionable decision", () => {
+  const result = planDispatch({
+    route: "Nairobi-Nakuru",
+    departureTime: "2026-03-20T07:30:00.000Z",
+    totalSeats: 50,
+    bookedSeats: 47,
+    noShowRate: 0.08,
+    weatherRisk: 0.2,
+    trafficRisk: 0.6
+  });
+
+  assert.ok(["add_vehicle", "enable_waitlist", "shift_departure", "hold"].includes(result.action));
+  assert.ok(result.occupancyRate >= 0);
+  assert.ok(result.occupancyRate <= 1);
+  assert.ok(result.overbookingBuffer >= 0);
+  assert.ok(result.dispatchAdvice);
+  assert.ok(result.signalsUsed.includes("bookedSeats"));
 });

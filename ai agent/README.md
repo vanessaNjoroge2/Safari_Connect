@@ -30,7 +30,11 @@ This folder contains only the AI-agent scope (Node.js), not the full platform UI
 - Accepts transcript input and returns TTS-ready response text.
 - Supports bilingual interaction for local accessibility.
 
-7. Unified decision assist (professional orchestration)
+7. Operations dispatch planner
+- Estimates seat pressure and route risk before departure.
+- Recommends actions like adding standby vehicles, enabling waitlists, or shifting departure.
+
+8. Unified decision assist (professional orchestration)
 - Combines recommendation, pricing, delay-risk, fraud, and chat into one response.
 - Returns decision summary with top action and passenger message.
 
@@ -62,6 +66,7 @@ ai agent/
       pricing/service.js
       prediction/service.js
       fraud/service.js
+      operations/service.js
     shared/
       gemini.js
       language.js
@@ -82,6 +87,7 @@ ai agent/
 - POST /v1/pricing/forecast
 - POST /v1/prediction/delay-risk
 - POST /v1/fraud/score
+- POST /v1/operations/dispatch-plan
 - POST /v1/chat/respond
 - POST /v1/voice/respond
 - POST /v1/decision/assist
