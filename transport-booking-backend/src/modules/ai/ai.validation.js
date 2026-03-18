@@ -1,13 +1,15 @@
 import { z } from "zod";
 
+const flexibleObjectSchema = z.object({}).catchall(z.unknown());
+
 export const aiAssistSchema = z.object({
-  trips: z.array(z.record(z.any())).default([]),
-  intent: z.record(z.any()).default({}),
+  trips: z.array(flexibleObjectSchema).default([]),
+  intent: flexibleObjectSchema.default({}),
   route: z.string().optional(),
   departureTime: z.string().optional(),
-  currentPrice: z.number().or(z.string()).optional(),
-  riskFactors: z.record(z.any()).default({}),
-  fraudSignals: z.record(z.any()).default({}),
+  currentPrice: z.coerce.number().optional(),
+  riskFactors: flexibleObjectSchema.default({}),
+  fraudSignals: flexibleObjectSchema.default({}),
   prompt: z.string().max(500).optional(),
   language: z.string().optional()
 });

@@ -157,22 +157,31 @@ export const searchTrips = async (query) => {
     };
   }
 
-  const trips = await prisma.trip.findMany({
-    where,
-    include: {
-      sacco: true,
-      bus: {
-        include: {
-          seats: true,
+  let trips = [];
+  try {
+    trips = await prisma.trip.findMany({
+      where,
+      include: {
+        sacco: true,
+        bus: {
+          include: {
+            seats: true,
+          },
         },
+        route: true,
+        bookings: true,
       },
-      route: true,
-      bookings: true,
-    },
-    orderBy: {
-      departureTime: "asc",
-    },
-  });
+      orderBy: {
+        departureTime: "asc",
+      },
+    });
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("public.Route") && message.includes("does not exist")) {
+      return [];
+    }
+    throw error;
+  }
 
   let filteredTrips = trips;
 
