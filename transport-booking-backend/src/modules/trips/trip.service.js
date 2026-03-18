@@ -102,7 +102,8 @@ export const getMyTrips = async (userId) => {
 
   return trips.map((trip) => {
     const bookedSeats = trip.bookings.filter(
-      (booking) => booking.status === "CONFIRMED" || booking.status === "PENDING"
+      (booking) =>
+        booking.status === "CONFIRMED" || booking.status === "PENDING",
     ).length;
 
     return {
@@ -114,14 +115,7 @@ export const getMyTrips = async (userId) => {
 };
 
 export const searchTrips = async (query) => {
-  const {
-    categoryId,
-    origin,
-    destination,
-    date,
-    time,
-    tripType,
-  } = query;
+  const { categoryId, origin, destination, date, time, tripType } = query;
 
   const where = {
     status: "SCHEDULED",
@@ -194,18 +188,18 @@ export const searchTrips = async (query) => {
       const bookedSeatIds = trip.bookings
         .filter(
           (booking) =>
-            booking.status === "CONFIRMED" || booking.status === "PENDING"
+            booking.status === "CONFIRMED" || booking.status === "PENDING",
         )
         .map((booking) => booking.seatId);
 
       const availableSeats = trip.bus.seats.filter(
-        (seat) => !bookedSeatIds.includes(seat.id)
+        (seat) => !bookedSeatIds.includes(seat.id),
       );
 
       const durationInMinutes = Math.floor(
         (new Date(trip.arrivalTime).getTime() -
           new Date(trip.departureTime).getTime()) /
-          (1000 * 60)
+          (1000 * 60),
       );
 
       const hours = Math.floor(durationInMinutes / 60);
@@ -266,7 +260,7 @@ export const getTripById = async (tripId) => {
   const bookedSeatIds = trip.bookings
     .filter(
       (booking) =>
-        booking.status === "CONFIRMED" || booking.status === "PENDING"
+        booking.status === "CONFIRMED" || booking.status === "PENDING",
     )
     .map((booking) => booking.seatId);
 
@@ -279,8 +273,9 @@ export const getTripById = async (tripId) => {
   }));
 
   const durationInMinutes = Math.floor(
-    (new Date(trip.arrivalTime).getTime() - new Date(trip.departureTime).getTime()) /
-      (1000 * 60)
+    (new Date(trip.arrivalTime).getTime() -
+      new Date(trip.departureTime).getTime()) /
+      (1000 * 60),
   );
 
   const hours = Math.floor(durationInMinutes / 60);
@@ -305,6 +300,12 @@ export const getTripById = async (tripId) => {
 };
 
 export const updateTripStatus = async (userId, tripId, status) => {
+  const allowedStatuses = ["SCHEDULED", "CANCELLED", "COMPLETED"];
+
+  if (!allowedStatuses.includes(status)) {
+    throw new Error("Invalid trip status");
+  }
+  
   const ownerProfile = await prisma.ownerProfile.findUnique({
     where: { userId },
     include: { sacco: true },
