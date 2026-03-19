@@ -1,9 +1,20 @@
 import type { RegisterPayload, SearchQuery, UserRole } from '../types';
 
-const API_BASE =
+const RAW_API_BASE =
   (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ||
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
   'http://localhost:3215';
+
+function normalizeApiBase(url: string) {
+  let base = url.trim().replace(/\/$/, '');
+  // Accept either host root (http://localhost:5000) or host with /api suffix.
+  if (base.endsWith('/api')) {
+    base = base.slice(0, -4);
+  }
+  return base;
+}
+
+const API_BASE = normalizeApiBase(RAW_API_BASE);
 
 export const AUTH_TOKEN_KEY = 'safiri_auth_token';
 
