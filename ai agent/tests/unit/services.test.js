@@ -42,6 +42,75 @@ test("chat returns structured response", async () => {
   assert.ok(result.disclaimer);
 });
 
+test("chat parses natural language date and avoids repeated date prompt", async () => {
+  const sessionId = `nl-date-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  await respondToPrompt({
+    text: "Find cheapest route to Mombasa",
+    language: "en",
+    sessionId,
+  });
+
+  const result = await respondToPrompt({
+    text: "Nairobi, 20th March tomorrow, 3000kshs from 2pm",
+    language: "en",
+    sessionId,
+  });
+
+  assert.equal(/travel date/i.test(result.message), false);
+  assert.equal(/please share your/i.test(result.message), false);
+  assert.match(result.message, /Nairobi -> Mombasa/i);
+});
+
+test("chat parses swahili relative date words", async () => {
+  const sessionId = `sw-date-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  await respondToPrompt({
+    text: "Pata route ya bei nafuu kwenda Mombasa",
+    language: "sw",
+    sessionId,
+  });
+
+  const result = await respondToPrompt({
+    text: "Nairobi, kesho, 3000ksh kutoka 2pm",
+    language: "sw",
+    sessionId,
+  });
+
+  assert.equal(/tarehe ya safari/i.test(result.message), false);
+});
+
+test("chat asks only missing slots with natural conjunction", async () => {
+  const sessionId = `clarify-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const result = await respondToPrompt({
+    text: "Cheapest route to Mombasa tomorrow",
+    language: "en",
+    sessionId,
+  });
+
+  assert.equal(/origin, destination, travel date, budget/i.test(result.message), false);
+  assert.match(result.message, /origin and budget/i);
+});
+
+test("chat recommendation uses explicit user priority", async () => {
+  const sessionId = `priority-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  await respondToPrompt({
+    text: "Find route from Nairobi to Mombasa",
+    language: "en",
+    sessionId,
+  });
+
+  const result = await respondToPrompt({
+    text: "tomorrow 2pm budget 3000 fastest",
+    language: "en",
+    sessionId,
+  });
+
+  assert.match(result.message, /priority is fastest/i);
+});
+
 test("voice returns bilingual TTS metadata", async () => {
   const result = await handleVoiceRequest({
     language: "sw",

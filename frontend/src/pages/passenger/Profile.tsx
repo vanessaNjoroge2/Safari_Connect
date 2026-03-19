@@ -1,8 +1,9 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
+import { changeMyPasswordApi, getMyBookingsApi, updateMeApi } from '../../lib/api';
 
 function PwdInput({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
@@ -23,34 +24,159 @@ function PwdInput({ placeholder, value, onChange }: { placeholder: string; value
 }
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, setUserProfile } = useAuth();
   const toast = useToast();
+  const [bookings, setBookings] = useState<Array<{
+    amount: number;
+    trip: { route: { origin: string; destination: string } };
+  }>>([]);
 
   const [form, setForm] = useState({
-    firstName:  user?.name?.split(' ')[0] ?? 'Jane',
-    lastName:   user?.name?.split(' ')[1] ?? 'Mwangi',
-    email:      user?.email ?? 'jane@email.com',
-    phone:      user?.phone ?? '0712 345 678',
-    idNumber:   user?.idNumber ?? '23456789',
-    residence:  user?.residence ?? 'Nairobi',
+    firstName:  user?.name?.split(' ')[0] ?? '',
+    lastName:   user?.name?.split(' ')[1] ?? '',
+    email:      user?.email ?? '',
+    phone:      user?.phone ?? '',
+    residence:  user?.residence ?? '',
     currentPwd: '',
     newPwd:     '',
     confirmPwd: '',
   });
 
-  const handleSave = (e: FormEvent) => {
-    e.preventDefault();
-    toast('Profile saved successfully!');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      firstName: user?.name?.split(' ')[0] ?? '',
+      lastName: user?.name?.split(' ').slice(1).join(' ') ?? '',
+      email: user?.email ?? '',
+      phone: user?.phone ?? '',
+      residence: user?.residence ?? '',
+    }));
+  }, [user]);
+
+  const handleSaveProfile = async (e?: FormEvent) => {
+    e?.preventDefault();
+
+    if (!user) {
+      toast('You must be logged in to update your profile', 'error');
+      return;
+    }
+
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+    const email = form.email.trim().toLowerCase();
+    const phone = form.phone.trim();
+
+    if (!firstName || !lastName || !email) {
+      toast('First name, last name, and email are required', 'warning');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const result = await updateMeApi({ firstName, lastName, email, phone });
+      const updatedName = `${result.data.firstName} ${result.data.lastName}`.trim();
+      const initials = updatedName
+        .split(' ')
+        .filter(Boolean)
+        .map((p) => p[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+
+      setUserProfile({
+        ...user,
+        name: updatedName || result.data.email,
+        email: result.data.email,
+        phone: result.data.phone || '',
+        initials: initials || user.initials || 'SC',
+      });
+
+      toast('Profile updated successfully', 'success');
+    } catch (error) {
+      toast((error as Error).message || 'Unable to update profile', 'error');
+    } finally {
+      setSavingProfile(false);
+    }
   };
+
+  const handleSavePassword = async () => {
+    if (!form.currentPwd || !form.newPwd || !form.confirmPwd) {
+      toast('Provide current and new password details', 'warning');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      await changeMyPasswordApi({
+        currentPassword: form.currentPwd,
+        newPassword: form.newPwd,
+        confirmPassword: form.confirmPwd,
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        currentPwd: '',
+        newPwd: '',
+        confirmPwd: '',
+      }));
+      toast('Password updated successfully', 'success');
+    } catch (error) {
+      toast((error as Error).message || 'Unable to update password', 'error');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await getMyBookingsApi();
+        setBookings(
+          result.data.map((b) => ({
+            amount: Number(b.amount) || 0,
+            trip: b.trip,
+          }))
+        );
+      } catch (error) {
+        toast((error as Error).message || 'Unable to load profile travel stats', 'error');
+      }
+    })();
+  }, [toast]);
 
   const trustScore = user?.trustScore ?? 94;
   const circumference = 2 * Math.PI * 28;
   const dashOffset = circumference - (trustScore / 100) * circumference;
 
+  const totalTrips = bookings.length;
+  const totalSpent = bookings.reduce((sum, b) => sum + b.amount, 0);
+  const favouriteRoute = useMemo(() => {
+    if (!bookings.length) return { label: 'No trips yet', count: 0 };
+
+    const routeMap = new Map<string, number>();
+    bookings.forEach((b) => {
+      const routeKey = `${b.trip.route.origin} -> ${b.trip.route.destination}`;
+      routeMap.set(routeKey, (routeMap.get(routeKey) || 0) + 1);
+    });
+
+    let topRoute = 'No trips yet';
+    let topCount = 0;
+    routeMap.forEach((count, route) => {
+      if (count > topCount) {
+        topRoute = route;
+        topCount = count;
+      }
+    });
+
+    return { label: topRoute, count: topCount };
+  }, [bookings]);
+
   const stats = [
-    { label: 'TOTAL TRIPS',     value: '12',          sub: 'This year',       color: 'var(--brand)' },
-    { label: 'FAVOURITE ROUTE', value: 'NBI → Nakuru', sub: '7 of 12 trips',  color: '#3b82f6' },
-    { label: 'TOTAL SPENT',     value: 'KES 14,200',  sub: 'All time',        color: '#7c3aed' },
+    { label: 'TOTAL TRIPS',     value: totalTrips.toString(),          sub: 'From booking history',       color: 'var(--brand)' },
+    { label: 'FAVOURITE ROUTE', value: favouriteRoute.label, sub: `${favouriteRoute.count} of ${totalTrips} trips`,  color: '#3b82f6' },
+    { label: 'TOTAL SPENT',     value: `KES ${totalSpent.toLocaleString()}`,  sub: 'From booking history',        color: '#7c3aed' },
     { label: 'AI TRUST SCORE',  value: `${trustScore}/100`, sub: 'Excellent', color: 'var(--brand)' },
   ];
 
@@ -65,7 +191,11 @@ export default function Profile() {
     <DashboardLayout
       title="My profile"
       subtitle="Manage your account and preferences"
-      actions={<button className="btn btn-primary btn-sm" onClick={handleSave}>Save changes</button>}
+      actions={
+        <button className="btn btn-primary btn-sm" disabled={savingProfile} onClick={() => void handleSaveProfile()}>
+          {savingProfile ? 'Saving...' : 'Save changes'}
+        </button>
+      }
     >
       {/* ── Profile hero card ── */}
       <div className="profile-hero">
@@ -119,7 +249,7 @@ export default function Profile() {
         <div>
           <div className="card mb-4">
             <div className="card-title">Edit profile</div>
-            <form onSubmit={handleSave}>
+            <form onSubmit={(e) => void handleSaveProfile(e)}>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">First name</label>
@@ -138,10 +268,6 @@ export default function Profile() {
                 <div className="form-group">
                   <label className="form-label">Phone number</label>
                   <input className="input" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">National ID</label>
-                  <input className="input" value={form.idNumber} onChange={e => setForm(p => ({ ...p, idNumber: e.target.value }))} />
                 </div>
               </div>
               <div className="form-group">
@@ -167,7 +293,9 @@ export default function Profile() {
                 <PwdInput placeholder="Repeat" value={form.confirmPwd} onChange={v => setForm(p => ({ ...p, confirmPwd: v }))} />
               </div>
             </div>
-            <button className="btn btn-primary btn-full" onClick={handleSave}>Update password</button>
+            <button className="btn btn-primary btn-full" disabled={savingPassword} onClick={() => void handleSavePassword()}>
+              {savingPassword ? 'Updating password...' : 'Update password'}
+            </button>
           </div>
         </div>
 

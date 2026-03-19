@@ -545,19 +545,19 @@ const QUICK_REPLIES_SW = [
 ];
 
 const AI_RESPONSES: Record<string, string> = {
-  default: "I'm your SafiriConnect AI assistant. I can help you find trips, check fares, track bookings, and answer any transport questions. How can I help?",
-  mombasa: "🚌 **Nairobi → Mombasa** — Next departures:\n• 06:00 AM · Easy Coach · KES 1,500 · 14 seats left\n• 08:00 AM · Modern Coast · KES 1,800 (VIP) · 6 seats\n\n**AI Insight:** Fares are expected to rise 12% by Thursday. Book now for best price.",
-  nakuru: "🚌 **Nairobi → Nakuru** — Next bus departs in **42 minutes** (14 seats left). \nFare: KES 850. Estimated journey: 2h 10min.\n\nShall I reserve a seat for you?",
-  track: "📋 **Booking SC-2026-00892**\n• Route: Nairobi → Nakuru\n• Date: 18 Mar 2026 · Seat 14B\n• Status: **Upcoming** ✅\n• Departure: 8:00 AM from Westlands Terminus",
-  trust: "🛡️ **Your AI Trust Score: 94/100 — Excellent**\n\nBased on: 12 completed trips, zero cancellations, verified ID, positive driver ratings.\n\nTop 6% of all SafiriConnect passengers.",
+  default: 'Live AI response is unavailable at the moment. Please retry shortly.',
+  mombasa: 'Live AI response is unavailable at the moment. Please retry shortly.',
+  nakuru: 'Live AI response is unavailable at the moment. Please retry shortly.',
+  track: 'Live AI response is unavailable at the moment. Please retry shortly.',
+  trust: 'Live AI response is unavailable at the moment. Please retry shortly.',
 };
 
 const AI_RESPONSES_SW: Record<string, string> = {
-  default: 'Mimi ni msaidizi wako wa SafiriConnect AI. Naweza kusaidia kupanga safari, bei, na kufuatilia booking. Nikusaidie vipi?',
-  mombasa: '🚌 **Nairobi → Mombasa** — Safari zijazo:\n• 06:00 AM · Easy Coach · KES 1,500 · viti 14\n• 08:00 AM · Modern Coast · KES 1,800 (VIP) · viti 6\n\n**Ushauri wa AI:** Bei zinaweza kupanda kwa 12% kufikia Alhamisi. Book mapema.',
-  nakuru: '🚌 **Nairobi → Nakuru** — Basi inayofuata inaondoka ndani ya dakika **42** (viti 14).\nNauli: KES 850. Muda wa safari: 2h 10min.',
-  track: '📋 **Booking SC-2026-00892**\n• Njia: Nairobi → Nakuru\n• Tarehe: 18 Mar 2026 · Kiti 14B\n• Hali: **Upcoming** ✅\n• Kuondoka: 8:00 AM Westlands Terminus',
-  trust: '🛡️ **AI Trust Score yako: 94/100 — Bora Sana**\n\nKwa msingi wa: safari 12 zilizokamilika, hakuna cancellation, ID verified, na ratings nzuri.',
+  default: 'Huduma ya AI ya moja kwa moja haipatikani kwa sasa. Jaribu tena baada ya muda mfupi.',
+  mombasa: 'Huduma ya AI ya moja kwa moja haipatikani kwa sasa. Jaribu tena baada ya muda mfupi.',
+  nakuru: 'Huduma ya AI ya moja kwa moja haipatikani kwa sasa. Jaribu tena baada ya muda mfupi.',
+  track: 'Huduma ya AI ya moja kwa moja haipatikani kwa sasa. Jaribu tena baada ya muda mfupi.',
+  trust: 'Huduma ya AI ya moja kwa moja haipatikani kwa sasa. Jaribu tena baada ya muda mfupi.',
 };
 
 function getAiReply(msg: string): string {
@@ -580,9 +580,22 @@ function getAiReplyByLang(msg: string, lang: ChatLang): string {
   return AI_RESPONSES_SW.default;
 }
 
-const API_BASE = (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) || (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3215';
+const RAW_API_BASE =
+  (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ||
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+  'http://localhost:3215';
 
-async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole) {
+function normalizeApiBase(url: string) {
+  let base = url.trim().replace(/\/$/, '');
+  if (base.endsWith('/api')) {
+    base = base.slice(0, -4);
+  }
+  return base;
+}
+
+const API_BASE = normalizeApiBase(RAW_API_BASE);
+
+async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole, sessionId: string) {
   try {
     const response = await fetch(`${API_BASE}/api/ai/chat`, {
       method: 'POST',
@@ -591,6 +604,7 @@ async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole) {
         text,
         language: lang,
         role,
+        sessionId,
       }),
     });
 
@@ -656,6 +670,18 @@ function now() {
 }
 
 export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
+  const storageKey = `safiri_chat_session_id_${role}`;
+  const chatSessionIdRef = useRef<string>('');
+
+  if (!chatSessionIdRef.current) {
+    const existing = localStorage.getItem(storageKey);
+    chatSessionIdRef.current =
+      existing || `${role}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+    if (!existing) {
+      localStorage.setItem(storageKey, chatSessionIdRef.current);
+    }
+  }
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<ChatLang>('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -867,7 +893,7 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     setInput('');
     setTyping(true);
 
-    const backendReply = await fetchAiReply(raw, lang, role);
+    const backendReply = await fetchAiReply(raw, lang, role, chatSessionIdRef.current);
     const reply = backendReply.reply || getAiReplyByLang(raw, lang);
     setAiBackendOnline(backendReply.fromBackend);
     const shouldAutoSpeak = voiceEnabled && (!autoVoiceOnMic || !!options?.fromVoice);

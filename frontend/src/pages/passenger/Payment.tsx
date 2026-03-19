@@ -13,16 +13,28 @@ export default function Payment() {
   const { booking, confirmBooking } = useBooking();
   const toast = useToast();
   const [status, setStatus] = useState<PayStatus>('waiting');
-  const [seconds, setSeconds] = useState(60);
+  const [seconds, setSeconds] = useState(120);
   const [initiating, setInitiating] = useState(false);
+  const [pollingActive, setPollingActive] = useState(false);
+  const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null);
+  const amountDisplay = booking.fare > 0 ? `KES ${booking.fare.toLocaleString()}` : 'KES -';
+  const phoneDisplay = booking.phone || 'No phone number available';
 
   const triggerStkPush = async () => {
     if (!booking.bookingId || !booking.phone) return;
     setInitiating(true);
+    setStatus('waiting');
+    setSeconds(120);
+    setPollingActive(false);
+    const startedAt = Date.now();
+    setAttemptStartedAt(startedAt);
+
     try {
       await initiateStkPushApi({ bookingId: booking.bookingId, phoneNumber: booking.phone });
+      setPollingActive(true);
       toast('STK push sent. Complete payment on your phone.', 'info');
     } catch (error) {
+      setPollingActive(false);
       setStatus('failed');
       toast((error as Error).message || 'Failed to initiate M-Pesa payment', 'error');
     } finally {
@@ -47,7 +59,7 @@ export default function Payment() {
   }, [booking.bookingId, booking.phone]);
 
   useEffect(() => {
-    if (status !== 'waiting' || !booking.bookingId) return;
+    if (status !== 'waiting' || !booking.bookingId || !pollingActive) return;
 
     const poll = setInterval(() => {
       void (async () => {
@@ -58,13 +70,23 @@ export default function Payment() {
           if (payStatus === 'SUCCESS' || payment.data.bookingStatus === 'CONFIRMED') {
             confirmBooking(payment.data.bookingCode, payment.data.bookingId, payment.data.bookingStatus);
             setStatus('success');
+            setPollingActive(false);
             clearInterval(poll);
             setTimeout(() => navigate('/passenger/ticket'), 900);
             return;
           }
 
           if (payStatus === 'FAILED') {
+            // Ignore stale failed states that can appear before the latest STK request is persisted.
+            const paymentCreatedAtMs = payment.data.payment?.createdAt
+              ? new Date(payment.data.payment.createdAt).getTime()
+              : null;
+            if (attemptStartedAt && paymentCreatedAtMs && paymentCreatedAtMs < attemptStartedAt) {
+              return;
+            }
+
             setStatus('failed');
+            setPollingActive(false);
             clearInterval(poll);
           }
         } catch {
@@ -74,7 +96,7 @@ export default function Payment() {
     }, 5000);
 
     return () => clearInterval(poll);
-  }, [status, booking.bookingId, confirmBooking, navigate]);
+  }, [status, booking.bookingId, confirmBooking, navigate, pollingActive, attemptStartedAt]);
 
   return (
     <DashboardLayout title="M-Pesa Payment" subtitle="Complete payment to confirm your booking">
@@ -87,10 +109,10 @@ export default function Payment() {
           </div>
 
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:36, fontWeight:800, marginBottom:6 }}>
-            KES {(booking.fare || 850).toLocaleString()}
+            {amountDisplay}
           </div>
           <p className="text-muted mb-5">
-            STK push sent to <strong style={{ color:'var(--gray-800)' }}>{booking.phone || '0712 345 678'}</strong>
+            STK push sent to <strong style={{ color:'var(--gray-800)' }}>{phoneDisplay}</strong>
           </p>
 
           {status === 'waiting' && (
@@ -102,11 +124,11 @@ export default function Payment() {
                   <strong>{seconds}s</strong>.
                 </div>
                 <div style={{ height:4, background:'#fde68a', borderRadius:99, overflow:'hidden' }}>
-                  <div style={{ height:'100%', background:'var(--warning)', borderRadius:99, width:`${(seconds/60)*100}%`, transition:'width 1s linear' }} />
+                  <div style={{ height:'100%', background:'var(--warning)', borderRadius:99, width:`${(seconds/120)*100}%`, transition:'width 1s linear' }} />
                 </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-ghost btn-full" onClick={() => { setSeconds(60); void triggerStkPush(); }} disabled={initiating}>Resend STK push</button>
+                <button className="btn btn-ghost btn-full" onClick={() => { void triggerStkPush(); }} disabled={initiating}>Resend STK push</button>
                 <button className="btn btn-primary btn-full" disabled>
                   Waiting for payment…
                 </button>
@@ -130,7 +152,7 @@ export default function Payment() {
                   Your PIN may have been incorrect or the request timed out.
                 </div>
               </div>
-              <button className="btn btn-primary btn-full" onClick={() => { setStatus('waiting'); setSeconds(60); }}>
+              <button className="btn btn-primary btn-full" onClick={() => { void triggerStkPush(); }}>
                 Try again
               </button>
             </div>

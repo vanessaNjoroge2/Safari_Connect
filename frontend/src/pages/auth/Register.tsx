@@ -1,9 +1,8 @@
 import type { FormEvent } from 'react';
 import { useState } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
-import type { UserRole } from '../../types';
 
 function PwdInput({ placeholder, value, onChange, className }: { placeholder: string; value: string; onChange: (v: string) => void; className?: string }) {
   const [show, setShow] = useState(false);
@@ -36,35 +35,24 @@ function PwdInput({ placeholder, value, onChange, className }: { placeholder: st
   );
 }
 
-const ROLE_META: Record<UserRole, { label: string; color: string; icon: string; dashboard: string }> = {
-  passenger: { label: 'Passenger',   color: 'var(--brand)', icon: '👤', dashboard: '/passenger/home' },
-  owner:     { label: 'SACCO Owner', color: '#3b82f6',      icon: '🏢', dashboard: '/owner/dashboard' },
-  admin:     { label: 'Super Admin', color: '#7c3aed',      icon: '🛡️', dashboard: '/admin/dashboard' },
-};
+const DEFAULT_DASHBOARD = '/passenger/home';
 
 interface FormState {
   firstName: string; lastName: string;
   email: string; phone: string;
-  idNumber: string;
   password: string; confirmPassword: string;
   agreeTerms: boolean;
-  // Owner fields
-  saccoName: string; regNumber: string; category: string;
 }
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
 export default function Register() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const role = (params.get('role') ?? 'passenger') as UserRole;
-  const meta = ROLE_META[role] ?? ROLE_META.passenger;
   const { register, isLoading } = useAuth();
   const toast = useToast();
 
   const [form, setForm] = useState<FormState>({
     firstName: '', lastName: '', email: '', phone: '',
-    idNumber: '', password: '', confirmPassword: '', agreeTerms: false,
-    saccoName: '', regNumber: '', category: 'bus',
+    password: '', confirmPassword: '', agreeTerms: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -80,7 +68,6 @@ export default function Register() {
     if (form.password.length < 6)      e.password = 'Minimum 6 characters';
     if (form.password !== form.confirmPassword) e.confirmPassword = 'Passwords do not match';
     if (!form.agreeTerms)  e.agreeTerms = 'You must agree to continue';
-    if (role === 'owner' && !form.saccoName) e.saccoName = 'Required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -92,13 +79,10 @@ export default function Register() {
       await register({
         firstName: form.firstName, lastName: form.lastName,
         email: form.email, phone: form.phone, password: form.password,
-        role, idNumber: form.idNumber,
-        saccoName: form.saccoName || undefined,
-        regNumber: form.regNumber || undefined,
-        category: form.category || undefined,
+        role: 'passenger',
       });
       toast('Account created! Welcome to SafiriConnect 🎉');
-      navigate(meta.dashboard);
+      navigate(DEFAULT_DASHBOARD);
     } catch {
       toast('Registration failed. Please try again.', 'error');
     }
@@ -114,18 +98,14 @@ export default function Register() {
             Safiri<span style={{ color: 'var(--brand)' }}>Connect</span>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.12)', padding: '6px 14px', borderRadius: 99, marginBottom: 18 }}>
-            <span>{meta.icon}</span>
-            <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>New {meta.label} account</span>
+            <span>✨</span>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>Create account</span>
           </div>
           <h2 style={{ color: '#fff', fontSize: '1.875rem', lineHeight: 1.25, marginBottom: 12 }}>
             Join SafiriConnect<br />in seconds.
           </h2>
           <p style={{ color: 'rgba(255,255,255,.55)', lineHeight: 1.75, fontSize: 14 }}>
-            {role === 'passenger'
-              ? 'Create your account and start booking Kenya-wide transport instantly.'
-              : role === 'owner'
-              ? 'Register your SACCO and start reaching thousands of passengers daily.'
-              : 'Admin accounts are provisioned by the platform team.'}
+            Create your account and start booking Kenya-wide transport instantly.
           </p>
         </div>
 
@@ -175,7 +155,7 @@ export default function Register() {
         {/* Bottom */}
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)' }}>
           Already have an account?{' '}
-          <Link to={`/auth/login?role=${role}`} style={{ color: 'var(--brand-mid)', fontWeight: 600 }}>Sign in →</Link>
+          <Link to="/auth/login" style={{ color: 'var(--brand-mid)', fontWeight: 600 }}>Sign in →</Link>
         </p>
       </div>
 
@@ -185,8 +165,8 @@ export default function Register() {
           <div style={{ marginBottom: 28 }}>
             <h2 style={{ fontSize: '1.5rem', marginBottom: 6 }}>Create your account</h2>
             <p style={{ fontSize: 14, color: 'var(--gray-400)' }}>
-              Registering as <strong style={{ color: 'var(--gray-700)' }}>{meta.label}</strong> ·{' '}
-              <Link to={`/auth/login?role=${role}`} style={{ color: 'var(--brand)', fontWeight: 600 }}>sign in instead</Link>
+              Register once and sign in from one unified login page ·{' '}
+              <Link to="/auth/login" style={{ color: 'var(--brand)', fontWeight: 600 }}>sign in instead</Link>
             </p>
           </div>
 
@@ -213,46 +193,12 @@ export default function Register() {
               {errors.email && <span className="form-error">{errors.email}</span>}
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Phone number</label>
-                <input className={`input${errors.phone ? ' has-error' : ''}`} placeholder="07XX XXX XXX"
-                  value={form.phone} onChange={e => set('phone', e.target.value)} />
-                {errors.phone && <span className="form-error">{errors.phone}</span>}
-              </div>
-              <div className="form-group">
-                <label className="form-label">{role === 'passenger' ? 'National ID' : 'ID / PIN'}</label>
-                <input className="input" placeholder="ID number"
-                  value={form.idNumber} onChange={e => set('idNumber', e.target.value)} />
-              </div>
+            <div className="form-group">
+              <label className="form-label">Phone number</label>
+              <input className={`input${errors.phone ? ' has-error' : ''}`} placeholder="07XX XXX XXX"
+                value={form.phone} onChange={e => set('phone', e.target.value)} />
+              {errors.phone && <span className="form-error">{errors.phone}</span>}
             </div>
-
-            {role === 'owner' && (
-              <>
-                <div className="form-group">
-                  <label className="form-label">SACCO / Business name</label>
-                  <input className={`input${errors.saccoName ? ' has-error' : ''}`} placeholder="Modern Coast Sacco"
-                    value={form.saccoName} onChange={e => set('saccoName', e.target.value)} />
-                  {errors.saccoName && <span className="form-error">{errors.saccoName}</span>}
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">NTSA registration no.</label>
-                    <input className="input" placeholder="NTSA/SACCO/XXXX"
-                      value={form.regNumber} onChange={e => set('regNumber', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Service category</label>
-                    <select className="select" value={form.category} onChange={e => set('category', e.target.value)}>
-                      <option value="bus">Buses (long haul)</option>
-                      <option value="matatu">Matatu</option>
-                      <option value="motorbike">Motorbike / Boda</option>
-                      <option value="carrier">Carrier services</option>
-                    </select>
-                  </div>
-                </div>
-              </>
-            )}
 
             <div className="form-row">
               <div className="form-group">
@@ -278,8 +224,8 @@ export default function Register() {
             {errors.agreeTerms && <span className="form-error" style={{ display: 'block', marginBottom: 12 }}>{errors.agreeTerms}</span>}
 
             <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={isLoading}
-              style={{ background: meta.color, borderColor: meta.color }}>
-              {isLoading ? 'Creating account…' : `Create ${meta.label} account →`}
+              >
+              {isLoading ? 'Creating account…' : 'Create account →'}
             </button>
           </form>
         </div>

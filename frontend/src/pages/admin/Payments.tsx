@@ -1,45 +1,146 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Badge, StatTile } from '../../components/UI';
+import { useToast } from '../../hooks/useToast';
+import { getAdminPaymentsApi } from '../../lib/api';
 import type { BadgeVariant } from '../../types';
 
 interface PayRow {
-  txId: string; bookingRef: string; passenger: string; sacco: string;
-  route: string; date: string; amount: string; commission: string;
-  mpesaCode: string; status: string; variant: BadgeVariant;
+  txId: string;
+  bookingRef: string;
+  passenger: string;
+  sacco: string;
+  route: string;
+  date: string;
+  amount: number;
+  commission: number;
+  mpesaCode: string;
+  status: string;
+  variant: BadgeVariant;
 }
-
-const PAYMENTS: PayRow[] = [
-  { txId:'PAY-20260318-001', bookingRef:'SC-2026-00892', passenger:'Virginia Wamaitha', sacco:'Modern Coast', route:'Nairobi → Nakuru',  date:'18 Mar 2026', amount:'KES 850',   commission:'KES 43',  mpesaCode:'RGK7YX2891', status:'Settled',  variant:'green' },
-  { txId:'PAY-20260318-002', bookingRef:'SC-2026-00891', passenger:'James Kariuki',     sacco:'Easy Coach',   route:'Nairobi → Mombasa', date:'18 Mar 2026', amount:'KES 2,200', commission:'KES 110', mpesaCode:'RGK8MN3012', status:'Settled',  variant:'green' },
-  { txId:'PAY-20260317-003', bookingRef:'SC-2026-00890', passenger:'Faith Njeri',       sacco:'Modern Coast', route:'Nairobi → Kisumu',  date:'17 Mar 2026', amount:'KES 1,100', commission:'KES 55',  mpesaCode:'RGJ4PQ1234', status:'Settled',  variant:'green' },
-  { txId:'PAY-20260317-004', bookingRef:'SC-2026-00889', passenger:'Peter Odhiambo',    sacco:'Eldoret Exp.', route:'Nairobi → Eldoret', date:'17 Mar 2026', amount:'KES 1,200', commission:'KES 60',  mpesaCode:'RGJ2AB5678', status:'Settled',  variant:'green' },
-  { txId:'PAY-20260316-005', bookingRef:'SC-2026-00887', passenger:'Samuel Mutua',      sacco:'City Express', route:'Nairobi → Nakuru',  date:'16 Mar 2026', amount:'KES 850',   commission:'KES 43',  mpesaCode:'RGI9CD9012', status:'Refunded', variant:'amber' },
-  { txId:'PAY-20260315-006', bookingRef:'SC-2026-00885', passenger:'Brian Kimani',      sacco:'Modern Coast', route:'Nairobi → Kisumu',  date:'15 Mar 2026', amount:'KES 1,800', commission:'KES 90',  mpesaCode:'RGH3EF3456', status:'Disputed', variant:'red'   },
-  { txId:'PAY-20260315-007', bookingRef:'SC-2026-00884', passenger:'Grace Muthoni',     sacco:'Eldoret Exp.', route:'Nairobi → Eldoret', date:'15 Mar 2026', amount:'KES 900',   commission:'KES 45',  mpesaCode:'RGH1GH7890', status:'Settled',  variant:'green' },
-  { txId:'PAY-20260314-008', bookingRef:'SC-2026-00883', passenger:'Kevin Otieno',      sacco:'Modern Coast', route:'Nairobi → Nakuru',  date:'14 Mar 2026', amount:'KES 850',   commission:'KES 43',  mpesaCode:'RGG5IJ1234', status:'Settled',  variant:'green' },
-];
 
 const FILTERS = ['All', 'Settled', 'Refunded', 'Disputed'];
 
-export default function AdminPayments() {
-  const [filter, setFilter] = useState('All');
+const statusToApiFilter: Record<string, 'ALL' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'> = {
+  All: 'ALL',
+  Settled: 'SUCCESS',
+  Refunded: 'REFUNDED',
+  Disputed: 'FAILED',
+};
 
-  const visible = PAYMENTS.filter(p => filter === 'All' || p.status === filter);
-  const totalRevenue = PAYMENTS.filter(p=>p.status==='Settled').reduce((a,p)=>a+parseInt(p.amount.replace(/[^0-9]/g,'')),0);
-  const totalCommission = PAYMENTS.filter(p=>p.status==='Settled').reduce((a,p)=>a+parseInt(p.commission.replace(/[^0-9]/g,'')),0);
+const statusToVariant: Record<string, BadgeVariant> = {
+  Settled: 'green',
+  Refunded: 'amber',
+  Disputed: 'red',
+  Pending: 'blue',
+};
+
+export default function AdminPayments() {
+  const toast = useToast();
+  const [filter, setFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<PayRow[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      setLoading(true);
+      try {
+        const response = await getAdminPaymentsApi({
+          status: statusToApiFilter[filter],
+          limit: 300,
+        });
+
+        if (!mounted) return;
+
+        const mapped: PayRow[] = response.data.map((item) => ({
+          txId: item.id,
+          bookingRef: item.bookingCode,
+          passenger: item.passengerName,
+          sacco: item.saccoName,
+          route: item.route,
+          date: new Date(item.createdAt).toLocaleDateString('en-KE', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          }),
+          amount: item.amount,
+          commission: item.commission,
+          mpesaCode: item.transactionRef,
+          status: item.statusLabel,
+          variant: statusToVariant[item.statusLabel] || 'gray',
+        }));
+
+        setRows(mapped);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      mounted = false;
+    };
+  }, [filter]);
+
+  const visible = useMemo(() => rows, [rows]);
+  const totalRevenue = useMemo(
+    () => visible.filter((p) => p.status === 'Settled').reduce((a, p) => a + p.amount, 0),
+    [visible]
+  );
+  const totalCommission = useMemo(
+    () => visible.filter((p) => p.status === 'Settled').reduce((a, p) => a + p.commission, 0),
+    [visible]
+  );
+
+  const exportCsv = () => {
+    if (visible.length === 0) {
+      toast('No payments to export', 'warning');
+      return;
+    }
+
+    const headers = ['Transaction', 'Booking Ref', 'Passenger', 'SACCO', 'Route', 'Date', 'Amount', 'Commission', 'M-Pesa Code', 'Status'];
+    const escapeValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const lines = [
+      headers.map(escapeValue).join(','),
+      ...visible.map((p) => [
+        p.txId,
+        p.bookingRef,
+        p.passenger,
+        p.sacco,
+        p.route,
+        p.date,
+        Math.round(p.amount),
+        Math.round(p.commission),
+        p.mpesaCode,
+        p.status,
+      ].map(escapeValue).join(',')),
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payments-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast('Payments exported', 'success');
+  };
 
   return (
     <DashboardLayout
       title="Payments Overview"
       subtitle="All M-Pesa transactions — revenue, commissions, refunds, disputes"
-      actions={<button className="btn btn-primary btn-sm">Export CSV</button>}
+      actions={<button className="btn btn-primary btn-sm" onClick={exportCsv}>Export CSV</button>}
     >
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         <StatTile label="Total Revenue (shown)" value={`KES ${totalRevenue.toLocaleString()}`} sub="Settled only" />
         <StatTile label="Platform Commission"   value={`KES ${totalCommission.toLocaleString()}`} sub="5% avg rate" />
-        <StatTile label="Refunds"               value={PAYMENTS.filter(p=>p.status==='Refunded').length} sub="This period" />
-        <StatTile label="Disputes"              value={PAYMENTS.filter(p=>p.status==='Disputed').length} sub="Needs review" />
+        <StatTile label="Refunds"               value={visible.filter(p=>p.status==='Refunded').length} sub="This period" />
+        <StatTile label="Disputes"              value={visible.filter(p=>p.status==='Disputed').length} sub="Needs review" />
       </div>
 
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
@@ -64,12 +165,18 @@ export default function AdminPayments() {
                 <td style={{ fontSize:13 }}>{p.sacco}</td>
                 <td style={{ fontSize:13 }}>{p.route}</td>
                 <td style={{ fontSize:12, color:'var(--gray-500)' }}>{p.date}</td>
-                <td style={{ fontWeight:700 }}>{p.amount}</td>
-                <td style={{ fontWeight:600, color:'var(--brand)' }}>{p.commission}</td>
+                <td style={{ fontWeight:700 }}>{`KES ${Math.round(p.amount).toLocaleString()}`}</td>
+                <td style={{ fontWeight:600, color:'var(--brand)' }}>{`KES ${Math.round(p.commission).toLocaleString()}`}</td>
                 <td style={{ fontFamily:'monospace', fontSize:12, letterSpacing:'.5px' }}>{p.mpesaCode}</td>
                 <td><Badge variant={p.variant}>{p.status}</Badge></td>
               </tr>
             ))}
+            {loading && (
+              <tr><td colSpan={10} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>Loading payments...</td></tr>
+            )}
+            {!loading && visible.length === 0 && (
+              <tr><td colSpan={10} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>No payments found for this filter.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

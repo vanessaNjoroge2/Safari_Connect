@@ -1,4 +1,5 @@
 import { env } from "../../config/env.js";
+import { prisma } from "../../config/prisma.js";
 
 function normalizeBaseUrl(url) {
   return String(url || "http://localhost:4100").replace(/\/+$/, "");
@@ -222,4 +223,367 @@ export const getAiVoice = async (payload) => {
   } catch {
     return fallbackVoice(payload);
   }
+};
+
+function dayKey(date) {
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function safeNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mean(values) {
+  if (!values.length) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function round2(value) {
+  return Number(safeNumber(value).toFixed(2));
+}
+
+async function buildOwnerContext(userId) {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile?.sacco) {
+    return {
+      scope: "owner",
+      source: "database",
+      generatedAt: new Date().toISOString(),
+      vehicles: [],
+      routes: [],
+      trips: [],
+      pricing: { minFare: 0, maxFare: 0, avgFare: 0, currency: "KES" },
+      operations: {
+        totalVehicles: 0,
+        activeVehicles: 0,
+        totalRoutes: 0,
+        totalUpcomingTrips: 0,
+        overallOccupancyRate: 0,
+      },
+      analytics: {
+        routePerformance: [],
+        revenueTrend: [],
+      },
+    };
+  }
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+  const [buses, trips, revenueBookings] = await Promise.all([
+    prisma.bus.findMany({
+      where: { saccoId: ownerProfile.sacco.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.trip.findMany({
+      where: {
+        saccoId: ownerProfile.sacco.id,
+        status: "SCHEDULED",
+      },
+      include: {
+        route: true,
+        bus: true,
+        bookings: {
+          select: {
+            status: true,
+            amount: true,
+          },
+        },
+      },
+      orderBy: { departureTime: "asc" },
+      take: 120,
+    }),
+    prisma.booking.findMany({
+      where: {
+        trip: {
+          saccoId: ownerProfile.sacco.id,
+        },
+        status: {
+          in: ["PENDING", "CONFIRMED"],
+        },
+        createdAt: {
+          gte: sevenDaysAgo,
+          lte: now,
+        },
+      },
+      select: {
+        createdAt: true,
+        amount: true,
+      },
+    }),
+  ]);
+
+  const tripRows = trips.map((trip) => {
+    const booked = trip.bookings.filter(
+      (b) => b.status === "PENDING" || b.status === "CONFIRMED"
+    ).length;
+    const capacity = Math.max(1, trip.bus.seatCapacity);
+    const occupancyRate = booked / capacity;
+    return {
+      id: trip.id,
+      routeId: trip.routeId,
+      route: `${trip.route.origin}-${trip.route.destination}`,
+      origin: trip.route.origin,
+      destination: trip.route.destination,
+      departureTime: trip.departureTime,
+      arrivalTime: trip.arrivalTime,
+      vehicleName: trip.bus.name,
+      plateNumber: trip.bus.plateNumber,
+      seatCapacity: trip.bus.seatCapacity,
+      bookedSeats: booked,
+      availableSeats: Math.max(0, capacity - booked),
+      occupancyRate,
+      price: safeNumber(trip.basePrice),
+      travelMinutes: Math.max(
+        0,
+        Math.round(
+          (new Date(trip.arrivalTime).getTime() -
+            new Date(trip.departureTime).getTime()) /
+            (1000 * 60)
+        )
+      ),
+      reliabilityScore: round2(Math.max(0.5, 1 - Math.min(0.5, occupancyRate * 0.35))),
+    };
+  });
+
+  const routeStats = new Map();
+  for (const trip of tripRows) {
+    const key = trip.routeId;
+    if (!routeStats.has(key)) {
+      routeStats.set(key, {
+        id: key,
+        route: `${trip.origin} -> ${trip.destination}`,
+        origin: trip.origin,
+        destination: trip.destination,
+        fares: [],
+        occupancies: [],
+        passengerCount: 0,
+        tripCount: 0,
+      });
+    }
+    const stat = routeStats.get(key);
+    stat.fares.push(trip.price);
+    stat.occupancies.push(trip.occupancyRate);
+    stat.passengerCount += trip.bookedSeats;
+    stat.tripCount += 1;
+  }
+
+  const routes = Array.from(routeStats.values())
+    .map((s) => ({
+      id: s.id,
+      route: s.route,
+      origin: s.origin,
+      destination: s.destination,
+      tripCount: s.tripCount,
+      passengerCount: s.passengerCount,
+      avgFare: round2(mean(s.fares)),
+      avgOccupancyRate: round2(mean(s.occupancies)),
+    }))
+    .sort((a, b) => b.tripCount - a.tripCount);
+
+  const prices = tripRows.map((t) => t.price);
+  const occupancyValues = tripRows.map((t) => t.occupancyRate);
+
+  const revenueByDay = new Map();
+  for (let i = 0; i < 7; i += 1) {
+    const d = new Date(sevenDaysAgo.getTime() + i * 24 * 60 * 60 * 1000);
+    revenueByDay.set(dayKey(d), 0);
+  }
+  for (const booking of revenueBookings) {
+    const key = dayKey(booking.createdAt);
+    revenueByDay.set(key, safeNumber(revenueByDay.get(key)) + safeNumber(booking.amount));
+  }
+
+  const revenueTrend = Array.from(revenueByDay.entries()).map(([date, amount]) => {
+    const d = new Date(date);
+    return {
+      date,
+      day: d.toLocaleDateString("en-KE", { weekday: "short" }),
+      amount: round2(amount),
+    };
+  });
+
+  return {
+    scope: "owner",
+    source: "database",
+    generatedAt: new Date().toISOString(),
+    sacco: {
+      id: ownerProfile.sacco.id,
+      name: ownerProfile.sacco.name,
+      categoryId: ownerProfile.sacco.categoryId,
+    },
+    vehicles: buses.map((bus) => ({
+      id: bus.id,
+      name: bus.name,
+      plateNumber: bus.plateNumber,
+      seatCapacity: bus.seatCapacity,
+      isActive: bus.isActive,
+    })),
+    routes,
+    trips: tripRows,
+    pricing: {
+      minFare: prices.length ? round2(Math.min(...prices)) : 0,
+      maxFare: prices.length ? round2(Math.max(...prices)) : 0,
+      avgFare: prices.length ? round2(mean(prices)) : 0,
+      currency: "KES",
+    },
+    operations: {
+      totalVehicles: buses.length,
+      activeVehicles: buses.filter((b) => b.isActive).length,
+      totalRoutes: routes.length,
+      totalUpcomingTrips: tripRows.length,
+      overallOccupancyRate: occupancyValues.length ? round2(mean(occupancyValues)) : 0,
+    },
+    analytics: {
+      routePerformance: routes.slice(0, 6),
+      revenueTrend,
+    },
+  };
+}
+
+async function buildPassengerContext(userId) {
+  const now = new Date();
+  const trips = await prisma.trip.findMany({
+    where: { status: "SCHEDULED" },
+    include: {
+      route: true,
+      bus: true,
+      bookings: {
+        select: {
+          status: true,
+        },
+      },
+      sacco: true,
+    },
+    orderBy: { departureTime: "asc" },
+    take: 80,
+  });
+
+  const myBookings = userId
+    ? await prisma.booking.findMany({
+        where: { userId },
+        include: {
+          trip: {
+            include: {
+              route: true,
+              sacco: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      })
+    : [];
+
+  const tripRows = trips.map((trip) => {
+    const booked = trip.bookings.filter(
+      (b) => b.status === "PENDING" || b.status === "CONFIRMED"
+    ).length;
+    const capacity = Math.max(1, trip.bus.seatCapacity);
+    return {
+      id: trip.id,
+      route: `${trip.route.origin}-${trip.route.destination}`,
+      origin: trip.route.origin,
+      destination: trip.route.destination,
+      departureTime: trip.departureTime,
+      arrivalTime: trip.arrivalTime,
+      saccoName: trip.sacco.name,
+      vehicleName: trip.bus.name,
+      plateNumber: trip.bus.plateNumber,
+      seatCapacity: trip.bus.seatCapacity,
+      bookedSeats: booked,
+      availableSeats: Math.max(0, capacity - booked),
+      occupancyRate: booked / capacity,
+      price: safeNumber(trip.basePrice),
+      travelMinutes: Math.max(
+        0,
+        Math.round(
+          (new Date(trip.arrivalTime).getTime() -
+            new Date(trip.departureTime).getTime()) /
+            (1000 * 60)
+        )
+      ),
+      reliabilityScore: round2(Math.max(0.5, 1 - Math.min(0.45, (booked / capacity) * 0.35))),
+    };
+  });
+
+  const prices = tripRows.map((t) => t.price);
+  const routes = new Map();
+  for (const trip of tripRows) {
+    const key = `${trip.origin}->${trip.destination}`;
+    if (!routes.has(key)) {
+      routes.set(key, {
+        id: key,
+        route: `${trip.origin} -> ${trip.destination}`,
+        origin: trip.origin,
+        destination: trip.destination,
+        tripCount: 0,
+        avgFareAccumulator: [],
+      });
+    }
+    const r = routes.get(key);
+    r.tripCount += 1;
+    r.avgFareAccumulator.push(trip.price);
+  }
+
+  const routeRows = Array.from(routes.values())
+    .map((r) => ({
+      id: r.id,
+      route: r.route,
+      origin: r.origin,
+      destination: r.destination,
+      tripCount: r.tripCount,
+      avgFare: round2(mean(r.avgFareAccumulator)),
+    }))
+    .sort((a, b) => b.tripCount - a.tripCount)
+    .slice(0, 8);
+
+  const nextTrip = tripRows.find((t) => new Date(t.departureTime) >= now) || null;
+
+  return {
+    scope: "passenger",
+    source: "database",
+    generatedAt: new Date().toISOString(),
+    trips: tripRows,
+    routes: routeRows,
+    pricing: {
+      minFare: prices.length ? round2(Math.min(...prices)) : 0,
+      maxFare: prices.length ? round2(Math.max(...prices)) : 0,
+      avgFare: prices.length ? round2(mean(prices)) : 0,
+      currency: "KES",
+    },
+    operations: {
+      totalUpcomingTrips: tripRows.length,
+      totalRoutes: routeRows.length,
+    },
+    nextTrip,
+    recentBookings: myBookings.map((booking) => ({
+      id: booking.id,
+      bookingCode: booking.bookingCode,
+      status: booking.status,
+      amount: safeNumber(booking.amount),
+      route: `${booking.trip.route.origin} -> ${booking.trip.route.destination}`,
+      departureTime: booking.trip.departureTime,
+      saccoName: booking.trip.sacco.name,
+    })),
+  };
+}
+
+export const getAiContext = async (user) => {
+  const role = String(user?.role || "USER").toUpperCase();
+
+  if (role === "OWNER") {
+    return buildOwnerContext(user?.userId);
+  }
+
+  return buildPassengerContext(user?.userId);
 };

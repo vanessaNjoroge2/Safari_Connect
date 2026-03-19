@@ -11,12 +11,14 @@ export const aiAssistSchema = z.object({
   riskFactors: flexibleObjectSchema.default({}),
   fraudSignals: flexibleObjectSchema.default({}),
   prompt: z.string().max(500).optional(),
-  language: z.string().optional()
+  language: z.string().optional(),
+  sessionId: z.string().max(80).optional()
 });
 
 export const aiChatSchema = z.object({
   text: z.string().min(1).max(500),
-  language: z.string().optional()
+  language: z.string().optional(),
+  sessionId: z.string().max(80).optional()
 });
 
 export const aiVoiceSchema = z.object({

@@ -1,5 +1,5 @@
 import { aiAssistSchema, aiChatSchema, aiVoiceSchema } from "./ai.validation.js";
-import { getAiAssist, getAiChat, getAiHealth, getAiVoice } from "./ai.service.js";
+import { getAiAssist, getAiChat, getAiContext, getAiHealth, getAiVoice } from "./ai.service.js";
 
 export const health = async (req, res, next) => {
   try {
@@ -8,6 +8,19 @@ export const health = async (req, res, next) => {
       success: true,
       message: "AI agent health fetched successfully",
       data
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const context = async (req, res, next) => {
+  try {
+    const data = await getAiContext(req.user);
+    return res.status(200).json({
+      success: true,
+      message: "AI context fetched successfully",
+      data,
     });
   } catch (error) {
     return next(error);

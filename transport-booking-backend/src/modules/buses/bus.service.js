@@ -126,3 +126,79 @@ export const getBusSeats = async (userId, busId) => {
     },
   });
 };
+
+export const updateBus = async (userId, busId, payload) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const bus = await prisma.bus.findFirst({
+    where: {
+      id: busId,
+      saccoId: ownerProfile.sacco.id,
+    },
+  });
+
+  if (!bus) {
+    throw new Error("Bus not found");
+  }
+
+  const nextName = payload.name?.trim();
+  const nextPlate = payload.plateNumber?.trim().toUpperCase();
+  const nextCapacity = Number(payload.seatCapacity);
+
+  if (nextPlate && nextPlate !== bus.plateNumber) {
+    const existing = await prisma.bus.findUnique({ where: { plateNumber: nextPlate } });
+    if (existing) {
+      throw new Error("Bus with this plate number already exists");
+    }
+  }
+
+  if (Number.isFinite(nextCapacity) && nextCapacity > 0) {
+    const seatsCount = await prisma.seat.count({ where: { busId } });
+    if (nextCapacity < seatsCount) {
+      throw new Error("Seat capacity cannot be lower than configured seats");
+    }
+  }
+
+  return prisma.bus.update({
+    where: { id: busId },
+    data: {
+      ...(nextName ? { name: nextName } : {}),
+      ...(nextPlate ? { plateNumber: nextPlate } : {}),
+      ...(Number.isFinite(nextCapacity) && nextCapacity > 0 ? { seatCapacity: nextCapacity } : {}),
+    },
+  });
+};
+
+export const setBusActiveState = async (userId, busId, isActive) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const bus = await prisma.bus.findFirst({
+    where: {
+      id: busId,
+      saccoId: ownerProfile.sacco.id,
+    },
+  });
+
+  if (!bus) {
+    throw new Error("Bus not found");
+  }
+
+  return prisma.bus.update({
+    where: { id: busId },
+    data: { isActive: Boolean(isActive) },
+  });
+};

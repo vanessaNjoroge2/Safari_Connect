@@ -7,7 +7,7 @@ const RAW_API_BASE =
 
 function normalizeApiBase(url: string) {
   let base = url.trim().replace(/\/$/, '');
-  // Accept either host root (http://localhost:5000) or host with /api suffix.
+  // Accept either host root (http://localhost:3215) or host with /api suffix.
   if (base.endsWith('/api')) {
     base = base.slice(0, -4);
   }
@@ -106,6 +106,7 @@ export async function loginApi(payload: { email: string; password: string }) {
 }
 
 export async function registerApi(payload: RegisterPayload) {
+  const role = payload.role ?? 'passenger';
   return apiRequest<AuthEnvelope>('/api/auth/register', {
     method: 'POST',
     body: {
@@ -114,7 +115,7 @@ export async function registerApi(payload: RegisterPayload) {
       email: payload.email,
       phone: payload.phone,
       password: payload.password,
-      role: toBackendRole(payload.role),
+      role: toBackendRole(role),
     },
   });
 }
@@ -123,6 +124,29 @@ export async function meApi(token?: string) {
   return apiRequest<MeEnvelope>('/api/auth/me', {
     method: 'GET',
     token,
+  });
+}
+
+export async function updateMeApi(payload: {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+}) {
+  return apiRequest<MeEnvelope>('/api/auth/me', {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function changeMyPasswordApi(payload: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: null }>('/api/auth/password', {
+    method: 'PATCH',
+    body: payload,
   });
 }
 
@@ -253,10 +277,21 @@ export type StkPushEnvelope = {
 };
 
 export async function initiateStkPushApi(payload: { bookingId: string; phoneNumber: string }) {
-  return apiRequest<StkPushEnvelope>('/api/payments/stk-push', {
-    method: 'POST',
-    body: payload,
-  });
+  try {
+    return await apiRequest<StkPushEnvelope>('/api/payments/stk-push', {
+      method: 'POST',
+      body: payload,
+    });
+  } catch (error) {
+    const msg = (error as Error).message || '';
+    if (!msg.includes('404')) throw error;
+
+    // Legacy fallback for older route shapes.
+    return apiRequest<StkPushEnvelope>('/api/payments/payment/stk-push', {
+      method: 'POST',
+      body: payload,
+    });
+  }
 }
 
 export type PaymentStatusEnvelope = {
@@ -273,12 +308,21 @@ export type PaymentStatusEnvelope = {
       amount: number;
       phoneNumber: string;
       createdAt?: string;
+      updatedAt?: string;
     };
   };
 };
 
 export async function getPaymentStatusApi(bookingId: string) {
-  return apiRequest<PaymentStatusEnvelope>(`/api/payments/status/${bookingId}`);
+  try {
+    return await apiRequest<PaymentStatusEnvelope>(`/api/payments/status/${bookingId}`);
+  } catch (error) {
+    const msg = (error as Error).message || '';
+    if (!msg.includes('404')) throw error;
+
+    // Legacy fallback for older route shapes.
+    return apiRequest<PaymentStatusEnvelope>(`/api/payments/payment/status/${bookingId}`);
+  }
 }
 
 export type MyBookingsEnvelope = {
@@ -309,8 +353,475 @@ export async function getMyBookingsApi() {
   return apiRequest<MyBookingsEnvelope>('/api/bookings/me');
 }
 
+export type OwnerBusEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    id: string;
+    saccoId: string;
+    name: string;
+    plateNumber: string;
+    seatCapacity: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+};
+
+export async function createOwnerBusApi(payload: {
+  name: string;
+  plateNumber: string;
+  seatCapacity: number;
+}) {
+  return apiRequest<OwnerBusEnvelope>('/api/buses', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export type OwnerBusesEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    saccoId: string;
+    name: string;
+    plateNumber: string;
+    seatCapacity: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export async function getOwnerBusesApi() {
+  return apiRequest<OwnerBusesEnvelope>('/api/buses/me');
+}
+
+export type OwnerBusSeatsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    busId: string;
+    seatNumber: string;
+    seatClass: 'VIP' | 'FIRST_CLASS' | 'BUSINESS';
+    price: number;
+  }>;
+};
+
+export async function getOwnerBusSeatsApi(busId: string) {
+  return apiRequest<OwnerBusSeatsEnvelope>(`/api/buses/${busId}/seats`);
+}
+
+export async function createOwnerBusSeatsApi(
+  busId: string,
+  seats: Array<{
+    seatNumber: string;
+    seatClass: 'VIP' | 'FIRST_CLASS' | 'BUSINESS';
+    price: number;
+  }>
+) {
+  return apiRequest<OwnerBusSeatsEnvelope>(`/api/buses/${busId}/seats`, {
+    method: 'POST',
+    body: { seats },
+  });
+}
+
+export type OwnerTripsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    busId: string;
+    routeId: string;
+    departureTime: string;
+    arrivalTime: string;
+    basePrice: number;
+    status: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED';
+    bookedSeats: number;
+    availableSeats: number;
+    bus: {
+      id: string;
+      name: string;
+      plateNumber: string;
+      seatCapacity: number;
+    };
+    route: {
+      id: string;
+      origin: string;
+      destination: string;
+    };
+    bookings: Array<{
+      id: string;
+      bookingCode: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      amount: number;
+      status: string;
+      createdAt: string;
+    }>;
+  }>;
+};
+
+export async function getOwnerTripsApi() {
+  return apiRequest<OwnerTripsEnvelope>('/api/trips/me');
+}
+
+export async function createOwnerTripApi(payload: {
+  busId: string;
+  routeId: string;
+  tripType?: 'ONE_WAY' | 'ROUND_TRIP';
+  departureTime: string;
+  arrivalTime: string;
+  basePrice: number;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: any }>('/api/trips', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export type RoutesEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    origin: string;
+    destination: string;
+    distanceKm?: number;
+    estimatedTime?: number;
+  }>;
+};
+
+export async function getRoutesApi() {
+  return apiRequest<RoutesEnvelope>('/api/routes');
+}
+
+export type CategoriesEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export type CategoryEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+};
+
+export async function getCategoriesApi() {
+  return apiRequest<CategoriesEnvelope>('/api/categories');
+}
+
+export async function createCategoryApi(payload: { name: string; slug: string; description?: string }) {
+  return apiRequest<CategoryEnvelope>('/api/categories', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateCategoryApi(categoryId: string, payload: { name?: string; slug?: string; description?: string }) {
+  return apiRequest<CategoryEnvelope>(`/api/categories/${categoryId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteCategoryApi(categoryId: string) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/categories/${categoryId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function getBookingByIdApi(bookingId: string) {
   return apiRequest<{ success: boolean; message: string; data: any }>(`/api/bookings/${bookingId}`);
+}
+
+export type AdminDashboardEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    generatedAt: string;
+    stats: {
+      totalUsers: number;
+      activeSaccos: number;
+      pendingSaccos: number;
+      bookingsToday: number;
+      grossRevenue: number;
+      failedPaymentsToday: number;
+      activeTrips: number;
+      commission: number;
+      openDisputes: number;
+    };
+    topRoutes: Array<{
+      route: string;
+      bookings: number;
+    }>;
+    pendingActions: {
+      saccoApprovals: number;
+      fraudCases: number;
+      openDisputes: number;
+      pendingWithdrawals: number;
+    };
+  };
+};
+
+export type AdminBookingsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    bookingCode: string;
+    passengerName: string;
+    route: string;
+    saccoName: string;
+    createdAt: string;
+    seatLabel: string;
+    amount: number;
+    paymentLabel: string;
+    bookingStatus: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
+    statusLabel: 'Upcoming' | 'On Route' | 'Completed' | 'Cancelled' | 'Disputed';
+    paymentStatus: null | 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  }>;
+};
+
+export type AdminPaymentsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    bookingCode: string;
+    passengerName: string;
+    saccoName: string;
+    route: string;
+    createdAt: string;
+    amount: number;
+    commission: number;
+    transactionRef: string;
+    status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+    statusLabel: 'Settled' | 'Pending' | 'Disputed' | 'Refunded';
+  }>;
+};
+
+export async function getAdminDashboardApi() {
+  return apiRequest<AdminDashboardEnvelope>('/api/admins/dashboard');
+}
+
+export async function getAdminBookingsApi(params?: {
+  status?: 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
+  q?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status && params.status !== 'ALL') search.set('status', params.status);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminBookingsEnvelope>(`/api/admins/bookings${query ? `?${query}` : ''}`);
+}
+
+export async function getAdminPaymentsApi(params?: {
+  status?: 'ALL' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  q?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status && params.status !== 'ALL') search.set('status', params.status);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminPaymentsEnvelope>(`/api/admins/payments${query ? `?${query}` : ''}`);
+}
+
+export type AdminUsersEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: 'USER' | 'OWNER' | 'ADMIN';
+    status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+    trustScore: number;
+    trips: number;
+    createdAt: string;
+  }>;
+};
+
+export async function getAdminUsersApi(params?: {
+  role?: 'ALL' | 'USER' | 'OWNER' | 'ADMIN';
+  status?: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  q?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.role && params.role !== 'ALL') search.set('role', params.role);
+  if (params?.status && params.status !== 'ALL') search.set('status', params.status);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminUsersEnvelope>(`/api/admins/users${query ? `?${query}` : ''}`);
+}
+
+export type AdminSaccosEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    name: string;
+    owner: string;
+    email: string;
+    routes: number;
+    vehicles: number;
+    bookings: number;
+    revenue: number;
+    status: 'Active' | 'Pending';
+    joined: string;
+    rating: number;
+  }>;
+};
+
+export async function getAdminSaccosApi(params?: {
+  status?: 'ALL' | 'ACTIVE' | 'PENDING';
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status && params.status !== 'ALL') search.set('status', params.status);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminSaccosEnvelope>(`/api/admins/saccos${query ? `?${query}` : ''}`);
+}
+
+export type CreateAdminSaccoPayload = {
+  ownerFirstName: string;
+  ownerLastName: string;
+  ownerEmail: string;
+  ownerPhone?: string;
+  ownerPassword: string;
+  name: string;
+  categoryId: string;
+  supportEmail?: string;
+  supportPhone?: string;
+  logoUrl?: string;
+  isActive?: boolean;
+};
+
+export async function createAdminSaccoApi(payload: CreateAdminSaccoPayload) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/admins/saccos`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export type AdminAnalyticsEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    months: Array<{ month: string; revenue: number; bookings: number }>;
+    topRoutes: Array<{ route: string; bookings: number; revenue: number }>;
+    topSaccos: Array<{ name: string; revenue: number; bookings: number }>;
+  };
+};
+
+export async function getAdminAnalyticsApi() {
+  return apiRequest<AdminAnalyticsEnvelope>('/api/admins/analytics');
+}
+
+export type AdminSupportEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    subject: string;
+    user: string;
+    category: string;
+    created: string;
+    priority: string;
+    status: string;
+    assignedTo: string;
+  }>;
+};
+
+export async function getAdminSupportApi() {
+  return apiRequest<AdminSupportEnvelope>('/api/admins/support');
+}
+
+export type AdminSettingsEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    commissionRate: number;
+    minimumFare: number;
+    aiPricing: boolean;
+    fraudBlockThreshold: number;
+    delayRiskAlert: 'medium' | 'high';
+    voiceLanguages: 'en' | 'sw' | 'en-sw';
+    notifications: {
+      smsBooking: boolean;
+      emailTicket: boolean;
+      pushDeparture: boolean;
+      saccoRevenueReport: boolean;
+      adminFraudAlert: boolean;
+    };
+    sessionTimeoutMinutes: number;
+    maxFailedLogins: number;
+    require2fa: boolean;
+    platformInfo: {
+      version: string;
+      environment: string;
+      build: string;
+      apiStatus: string;
+    };
+  };
+};
+
+export async function getAdminSettingsApi() {
+  return apiRequest<AdminSettingsEnvelope>('/api/admins/settings');
+}
+
+export async function updateAdminSettingsApi(payload: Partial<AdminSettingsEnvelope['data']>) {
+  return apiRequest<AdminSettingsEnvelope>('/api/admins/settings', {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function updateAdminTicketApi(ticketId: string, payload: { status: string }) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/admins/support/${ticketId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function updateAdminSaccoStatusApi(saccoId: string, payload: { isActive: boolean }) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/admins/saccos/${saccoId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function updateAdminUserStatusApi(userId: string, payload: { status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/admins/users/${userId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
 }
 
 export type AiAssistEnvelope = {
@@ -365,6 +876,112 @@ export type AiAssistEnvelope = {
     };
   };
 };
+
+export type AiContextEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    scope: 'owner' | 'passenger';
+    source: 'database';
+    generatedAt: string;
+    trips: Array<{
+      id: string;
+      route: string;
+      origin: string;
+      destination: string;
+      departureTime: string;
+      arrivalTime: string;
+      vehicleName: string;
+      plateNumber: string;
+      seatCapacity: number;
+      bookedSeats: number;
+      availableSeats: number;
+      occupancyRate: number;
+      price: number;
+      travelMinutes: number;
+      reliabilityScore: number;
+      saccoName?: string;
+    }>;
+    routes: Array<{
+      id: string;
+      route: string;
+      origin: string;
+      destination: string;
+      tripCount: number;
+      passengerCount?: number;
+      avgFare: number;
+      avgOccupancyRate?: number;
+    }>;
+    vehicles?: Array<{
+      id: string;
+      name: string;
+      plateNumber: string;
+      seatCapacity: number;
+      isActive: boolean;
+    }>;
+    pricing: {
+      minFare: number;
+      maxFare: number;
+      avgFare: number;
+      currency: 'KES';
+    };
+    operations: {
+      totalVehicles?: number;
+      activeVehicles?: number;
+      totalRoutes: number;
+      totalUpcomingTrips: number;
+      overallOccupancyRate?: number;
+    };
+    analytics?: {
+      routePerformance: Array<{
+        id: string;
+        route: string;
+        origin: string;
+        destination: string;
+        tripCount: number;
+        passengerCount: number;
+        avgFare: number;
+        avgOccupancyRate: number;
+      }>;
+      revenueTrend: Array<{
+        date: string;
+        day: string;
+        amount: number;
+      }>;
+    };
+    nextTrip?: {
+      id: string;
+      route: string;
+      origin: string;
+      destination: string;
+      departureTime: string;
+      arrivalTime: string;
+      vehicleName: string;
+      plateNumber: string;
+      seatCapacity: number;
+      bookedSeats: number;
+      availableSeats: number;
+      occupancyRate: number;
+      price: number;
+      travelMinutes: number;
+      reliabilityScore: number;
+      saccoName: string;
+    } | null;
+    recentBookings?: Array<{
+      id: string;
+      bookingCode: string;
+      status: string;
+      amount: number;
+      route: string;
+      departureTime: string;
+      saccoName: string;
+    }>;
+  };
+};
+
+export async function aiContextApi() {
+  return apiRequest<AiContextEnvelope>('/api/ai/context');
+}
 
 export async function aiAssistApi(payload: {
   prompt: string;

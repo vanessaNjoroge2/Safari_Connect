@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { User, UserRole, LoginPayload, RegisterPayload } from '../types';
+import type { User, LoginPayload, RegisterPayload } from '../types';
 import {
   clearAuthToken,
   getAuthToken,
@@ -16,6 +16,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<User>;
+  setUserProfile: (user: User) => void;
   logout: () => void;
 }
 
@@ -28,16 +29,11 @@ const fallbackAuthContext: AuthContextValue = {
   register: async () => {
     throw new Error('Auth provider unavailable');
   },
+  setUserProfile: () => {},
   logout: () => {},
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function toFrontendRole(role: string): UserRole {
-  if (role === 'OWNER') return 'owner';
-  if (role === 'ADMIN') return 'admin';
-  return 'passenger';
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -63,15 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = useCallback(async ({ email, password, role }: LoginPayload): Promise<User> => {
+  const login = useCallback(async ({ email, password }: LoginPayload): Promise<User> => {
     setIsLoading(true);
     try {
       const result = await loginApi({ email, password });
-      const backendRole = toFrontendRole(result.data.user.role);
-
-      if (backendRole !== role) {
-        throw new Error(`This account is ${backendRole}, not ${role}`);
-      }
 
       const mapped = mapAuthUserToFrontend(result.data.user);
       setAuthToken(result.data.token);
@@ -85,22 +76,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(async (payload: RegisterPayload): Promise<User> => {
     setIsLoading(true);
     try {
-      if (payload.role === 'admin') {
-        throw new Error('Admin accounts are provisioned by platform admins');
-      }
-
       const result = await registerApi(payload);
       const mapped = mapAuthUserToFrontend(result.data.user);
       setAuthToken(result.data.token);
-      setUser({
-        ...mapped,
-        idNumber: payload.idNumber,
-      });
-
-      return {
-        ...mapped,
-        idNumber: payload.idNumber,
-      };
+      setUser(mapped);
+      return mapped;
     } finally {
       setIsLoading(false);
     }
@@ -111,8 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const setUserProfile = useCallback((nextUser: User) => {
+    setUser(nextUser);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, setUserProfile, logout }}>
       {children}
     </AuthContext.Provider>
   );

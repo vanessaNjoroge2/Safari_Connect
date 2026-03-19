@@ -1,62 +1,108 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { AiBanner, StatTile, ChartBar, Badge, AiAgentPanel } from '../../components/UI';
+import { aiContextApi, type AiContextEnvelope } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 
 export default function OwnerDashboard() {
   const nav = useNavigate();
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [context, setContext] = useState<AiContextEnvelope['data'] | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await aiContextApi();
+        setContext(result.data);
+      } catch (error) {
+        toast((error as Error).message || 'Unable to load owner dashboard data', 'error');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  const routePerf = context?.analytics?.routePerformance || [];
+  const upcomingTrips = context?.trips || [];
+
+  const todayTrips = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return upcomingTrips.filter((t) => String(t.departureTime).slice(0, 10) === today).slice(0, 6);
+  }, [upcomingTrips]);
+
+  const occupancyPct = Math.round((context?.operations.overallOccupancyRate || 0) * 100);
+  const revenue7d = Math.round((context?.analytics?.revenueTrend || []).reduce((sum, row) => sum + row.amount, 0));
+  const primaryRoute = routePerf[0];
+  const activeVehicles = context?.operations.activeVehicles ?? 0;
+  const totalVehicles = context?.operations.totalVehicles ?? 0;
+  const topRouteLabel = primaryRoute?.route || context?.routes[0]?.route || 'No active route data';
+
+  const aiCards = [
+    {
+      type: 'Dispatch Planner',
+      icon: '🚌',
+      result: primaryRoute
+        ? `Prioritize ${primaryRoute.route}`
+        : 'Waiting for route demand data',
+      detail: primaryRoute
+        ? `${primaryRoute.passengerCount} passengers across ${primaryRoute.tripCount} trips. Consider extra deployment on peak slots.`
+        : 'No route-performance records available from backend yet.',
+      confidence: primaryRoute ? Math.min(95, Math.max(45, Math.round(primaryRoute.avgOccupancyRate * 100))) : 0,
+      actionLabel: 'Open fleet',
+      onAction: () => nav('/owner/fleet'),
+      accentColor: 'var(--brand)',
+    },
+    {
+      type: 'Occupancy Monitor',
+      icon: '📊',
+      result: `${occupancyPct}% overall occupancy`,
+      detail: `${context?.operations.totalUpcomingTrips ?? 0} upcoming trips currently tracked from live DB inventory.`,
+      confidence: loading ? 0 : Math.min(90, Math.max(35, occupancyPct)),
+      actionLabel: 'Open analytics',
+      onAction: () => nav('/owner/analytics'),
+      accentColor: '#3b82f6',
+    },
+    {
+      type: 'Revenue Tracker',
+      icon: '💰',
+      result: `KES ${revenue7d.toLocaleString()} (7d)`,
+      detail: 'Revenue computed from backend booking amounts in the last 7 days.',
+      confidence: loading ? 0 : 80,
+      actionLabel: 'Open payments',
+      onAction: () => nav('/owner/payments'),
+      accentColor: '#f59e0b',
+    },
+  ];
+
+  const bannerText = primaryRoute
+    ? `<strong>Top route right now: ${primaryRoute.route}.</strong> Occupancy at ${Math.round(primaryRoute.avgOccupancyRate * 100)}% across ${primaryRoute.tripCount} trips from live backend data.`
+    : '<strong>Owner dashboard is connected.</strong> Waiting for trips/bookings from backend to generate richer route intelligence.';
+
   return (
-    <DashboardLayout title="Dashboard" subtitle="Modern Coast Sacco"
+    <DashboardLayout title="Dashboard" subtitle={context?.nextTrip?.saccoName || 'Owner operations overview'}
       actions={<button className="btn btn-primary btn-sm" onClick={() => nav('/owner/schedules')}>+ Create trip</button>}>
-      <AiBanner text="<strong>Friday Nakuru route will be 96% full.</strong> Deploy an extra vehicle by Thursday. AI projects KES 42,500 additional revenue. Dynamic pricing active on 4 routes."
+      <AiBanner text={bannerText}
         action={<button className="btn btn-primary btn-sm" onClick={() => nav('/owner/fleet')}>Add vehicle</button>} />
       <div className="stat-grid mb-6">
-        <StatTile label="Trips today"     value="8"       sub="2 on route now" />
-        <StatTile label="Bookings today"  value="87"      sub="+12% vs yesterday" />
-        <StatTile label="Revenue today"   value="KES 74K" sub="Net after commission" />
-        <StatTile label="Occupancy"       value="81%"     sub="AI optimised" />
+        <StatTile label="Trips today" value={loading ? '...' : todayTrips.length} sub="Based on departure date" />
+        <StatTile label="Upcoming trips" value={loading ? '...' : context?.operations.totalUpcomingTrips ?? 0} sub="Scheduled in DB" />
+        <StatTile label="Revenue (7d)" value={loading ? '...' : `KES ${revenue7d.toLocaleString()}`} sub="From booking amounts" />
+        <StatTile label="Occupancy" value={loading ? '...' : `${occupancyPct}%`} sub="Across upcoming trips" />
       </div>
       <div className="stat-grid mb-6">
-        <StatTile label="Pending payments" value="3"        sub="Needs follow-up" neg />
-        <StatTile label="Cancelled"        value="2"        sub="KES 1,700 refunded" />
-        <StatTile label="Active vehicles"  value="6"        sub="2 in transit" />
-        <StatTile label="Monthly revenue"  value="KES 1.2M" sub="Net this month" />
+        <StatTile label="Total routes" value={loading ? '...' : context?.operations.totalRoutes ?? 0} sub="Routes with active trips" />
+        <StatTile label="Active vehicles" value={loading ? '...' : `${activeVehicles}/${totalVehicles}`} sub="Operational / total" />
+        <StatTile label="Top route" value={loading ? '...' : topRouteLabel} sub="Highest recent usage" />
+        <StatTile label="Sacco" value={loading ? '...' : context?.nextTrip?.saccoName || '—'} sub="From owner profile" />
       </div>
 
       <AiAgentPanel
         title="AI Operations Agent"
-        subtitle="Autonomous dispatch decisions and revenue optimisation"
+        subtitle="Backend-derived dispatch and revenue insights"
         cols={3}
-        cards={[
-          {
-            type: 'Dispatch Planner',
-            icon: '🚌',
-            result: 'Deploy standby vehicle — Nakuru 2 PM',
-            detail: 'Friday route at 96% capacity. AI recommends deploying KBZ 789B as standby to avoid turning away 22 passengers.',
-            confidence: 91,
-            actionLabel: 'Deploy vehicle',
-            onAction: () => nav('/owner/fleet'),
-            accentColor: 'var(--brand)',
-          },
-          {
-            type: 'Dynamic Pricing',
-            icon: '💰',
-            result: 'Raise Nakuru fare +8% (KES 920)',
-            detail: 'Peak demand detected Thursday–Sunday. AI projects KES 42,500 additional revenue with dynamic pricing on 4 routes.',
-            confidence: 85,
-            actionLabel: 'Apply pricing',
-            onAction: () => nav('/owner/seats'),
-            accentColor: '#f59e0b',
-          },
-          {
-            type: 'Delay Risk',
-            icon: '⚠️',
-            result: 'Medium risk on Mombasa 6 AM',
-            detail: 'Traffic congestion on Mombasa road. Estimated 25 min delay. Consider notifying passengers proactively.',
-            confidence: 76,
-            actionLabel: 'Notify passengers',
-            accentColor: '#ef4444',
-          },
-        ]}
+        cards={aiCards}
       />
 
       <h4 className="mb-3">Quick actions</h4>
@@ -68,18 +114,28 @@ export default function OwnerDashboard() {
       <div className="grid-2">
         <div className="card">
           <div className="card-title">Today's trips</div>
-          {[['NBI → Nakuru · 8:00 AM', 'On route', 'green'], ['NBI → Mombasa · 6:00 AM', 'On route', 'green'], ['NBI → Kisumu · 9:00 AM', 'Boarding', 'amber'], ['NBI → Nakuru · 2:00 PM', 'Scheduled', 'blue'], ['NBI → Eldoret · 3:00 PM', 'Scheduled', 'blue']].map(([t, s, v]) => (
-            <div key={t as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--gray-100)', fontSize: 13.5 }}>
-              <span>{t}</span>
-              <Badge variant={v as any}>{s}</Badge>
+          {!loading && todayTrips.length === 0 && <p className="text-sm text-muted">No trips scheduled for today.</p>}
+          {todayTrips.map((trip) => (
+            <div key={trip.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--gray-100)', fontSize: 13.5 }}>
+              <span>{trip.route} · {new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}</span>
+              <Badge variant={trip.occupancyRate > 0.7 ? 'green' : trip.occupancyRate > 0.4 ? 'amber' : 'blue'}>
+                {trip.occupancyRate > 0.7 ? 'High demand' : trip.occupancyRate > 0.4 ? 'Moderate' : 'Low demand'}
+              </Badge>
             </div>
           ))}
         </div>
         <div className="card">
           <div className="card-title">Route occupancy</div>
           <div className="chart-wrap mt-2">
-            {[['NBI→Nakuru', 92, '46/50'], ['NBI→Mombasa', 76, '38/50'], ['NBI→Kisumu', 58, '29/50'], ['NBI→Eldoret', 38, '19/50']].map(([l, p, v]) => (
-              <ChartBar key={l as string} label={l as string} pct={p as number} display={`${p}%`} val={v as string} />
+            {!loading && routePerf.length === 0 && <p className="text-sm text-muted">No route occupancy data available yet.</p>}
+            {routePerf.slice(0, 5).map((row) => (
+              <ChartBar
+                key={row.id}
+                label={row.route}
+                pct={Math.max(1, Math.min(100, Math.round(row.avgOccupancyRate * 100)))}
+                display={`${Math.round(row.avgOccupancyRate * 100)}%`}
+                val={`${row.passengerCount} pax`}
+              />
             ))}
           </div>
         </div>

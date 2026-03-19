@@ -1,168 +1,238 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useToast } from '../../hooks/useToast';
 import { AiAgentPanel, AiBanner, ChartBar, StatTile } from '../../components/UI';
-import { aiAssistApi } from '../../lib/api';
+import { aiAssistApi, aiContextApi, type AiContextEnvelope } from '../../lib/api';
 
+type OwnerAiCard = {
+  type: string;
+  icon: string;
+  result: string;
+  detail: string;
+  confidence: number;
+  actionLabel: string;
+  onAction: () => void;
+  accentColor: string;
+};
 
 export default function OwnerAnalytics() {
   const nav = useNavigate();
   const toast = useToast();
 
-  const [aiSummary, setAiSummary] = useState(
-    'AI is compiling route demand, delay risk, and pricing opportunities for your sacco.'
+  const [loading, setLoading] = useState(true);
+  const [aiSummary, setAiSummary] = useState('Loading AI analytics from backend data...');
+  const [context, setContext] = useState<AiContextEnvelope['data'] | null>(null);
+  const [aiCards, setAiCards] = useState<OwnerAiCard[]>([]);
+
+  const defaultCards = useMemo<OwnerAiCard[]>(
+    () => [
+      {
+        type: 'Capacity Forecaster',
+        icon: '📦',
+        result: 'Waiting for backend context',
+        detail: 'Fetching vehicles, routes, occupancy, and fare baselines from database.',
+        confidence: 0,
+        actionLabel: 'Open fleet',
+        onAction: () => nav('/owner/fleet'),
+        accentColor: 'var(--brand)',
+      },
+      {
+        type: 'Delay Risk Guard',
+        icon: '⏱️',
+        result: 'Waiting for backend context',
+        detail: 'Preparing route risk scoring from live operational data.',
+        confidence: 0,
+        actionLabel: 'Open bookings',
+        onAction: () => nav('/owner/bookings'),
+        accentColor: '#ef4444',
+      },
+      {
+        type: 'Fare Optimizer',
+        icon: '💰',
+        result: 'Waiting for backend context',
+        detail: 'Computing dynamic pricing recommendation from current trip inventory.',
+        confidence: 0,
+        actionLabel: 'Open payments',
+        onAction: () => nav('/owner/payments'),
+        accentColor: '#f59e0b',
+      },
+    ],
+    [nav]
   );
-  const [aiCards, setAiCards] = useState([
-    {
-      type: 'Capacity Forecaster',
-      icon: '📦',
-      result: 'Demand forecast in progress',
-      detail: 'Checking next high-pressure departures and waitlist triggers.',
-      confidence: 70,
-      actionLabel: 'Refresh',
-      onAction: () => nav('/owner/fleet'),
-      accentColor: 'var(--brand)',
-    },
-    {
-      type: 'Delay Risk Guard',
-      icon: '⏱️',
-      result: 'Assessing route risk',
-      detail: 'Reviewing weather and traffic risk for upcoming departures.',
-      confidence: 68,
-      actionLabel: 'Recalculate',
-      onAction: () => nav('/owner/bookings'),
-      accentColor: '#ef4444',
-    },
-    {
-      type: 'Fare Optimizer',
-      icon: '💰',
-      result: 'Model warming up',
-      detail: 'Preparing autonomous fare adjustment recommendation.',
-      confidence: 66,
-      actionLabel: 'Re-run model',
-      onAction: () => nav('/owner/payments'),
-      accentColor: '#f59e0b',
-    },
-  ]);
+
+  const hydrateAnalytics = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const contextResponse = await aiContextApi();
+      const ctx = contextResponse.data;
+      setContext(ctx);
+
+      const firstRoute = ctx.routes[0];
+      const firstTrip = ctx.trips[0];
+
+      const assistResponse = await aiAssistApi({
+        prompt:
+          'Generate concise owner analytics actions for dispatch, delay risk, and pricing based only on provided backend context.',
+        language: 'en',
+        route: firstRoute?.route || firstTrip?.route || '',
+        departureTime: firstTrip?.departureTime || undefined,
+        currentPrice: firstTrip?.price || ctx.pricing.avgFare || 0,
+        totalSeats: firstTrip?.seatCapacity || Math.max(1, Math.round((ctx.operations.totalVehicles || 1) * 45)),
+        bookedSeats:
+          firstTrip?.bookedSeats ||
+          Math.round((ctx.operations.overallOccupancyRate || 0) * Math.max(1, Math.round((ctx.operations.totalVehicles || 1) * 45))),
+        noShowRate: 0.1,
+        riskFactors: {
+          weatherRisk: 0.3,
+          trafficRisk: 0.45,
+          routeRisk: Math.min(0.8, Math.max(0.1, (ctx.operations.overallOccupancyRate || 0.4) * 0.7)),
+        },
+        fraudSignals: {
+          attemptsLast24h: 1,
+          cardMismatch: false,
+          rapidRetries: 0,
+          geoMismatch: false,
+        },
+        trips: ctx.trips.slice(0, 20).map((trip) => ({
+          id: trip.id,
+          route: trip.route,
+          price: trip.price,
+          travelMinutes: trip.travelMinutes,
+          reliabilityScore: trip.reliabilityScore,
+        })),
+        intent: {
+          maxBudget: Math.max(ctx.pricing.avgFare || 0, 1000),
+          maxTravelMinutes: 300,
+        },
+      });
+
+      const modules = assistResponse.data.modules;
+      setAiSummary(
+        `${assistResponse.data.summary.passengerMessage} Source: backend DB (${ctx.operations.totalUpcomingTrips} active trips).`
+      );
+
+      setAiCards([
+        {
+          type: 'Capacity Forecaster',
+          icon: '📦',
+          result: `Action ${modules.operations.action.replace('_', ' ')} · ${(modules.operations.occupancyRate * 100).toFixed(0)}% occupied`,
+          detail: modules.operations.dispatchAdvice,
+          confidence: Math.round((modules.operations.confidence || 0) * 100),
+          actionLabel: 'Apply dispatch plan',
+          onAction: () => nav('/owner/fleet'),
+          accentColor: 'var(--brand)',
+        },
+        {
+          type: 'Delay Risk Guard',
+          icon: '⏱️',
+          result: `${modules.delayRisk.riskLevel.toUpperCase()} risk · score ${(modules.delayRisk.riskScore * 100).toFixed(0)}%`,
+          detail: modules.delayRisk.recommendation,
+          confidence: Math.round((modules.delayRisk.confidence || 0) * 100),
+          actionLabel: 'Notify passengers',
+          onAction: () => nav('/owner/bookings'),
+          accentColor: '#ef4444',
+        },
+        {
+          type: 'Fare Optimizer',
+          icon: '💰',
+          result: `KES ${modules.pricing.currentPrice.toFixed(0)} -> KES ${modules.pricing.predictedPrice.toFixed(0)}`,
+          detail: `Demand ${modules.pricing.demandLevel}. Best window: ${modules.pricing.cheaperWindowSuggestion}.`,
+          confidence: Math.round((modules.pricing.confidence || 0) * 100),
+          actionLabel: 'Apply pricing change',
+          onAction: () => nav('/owner/payments'),
+          accentColor: '#f59e0b',
+        },
+      ]);
+    } catch (error) {
+      setAiSummary('Unable to load backend AI context. Please ensure backend and database are online.');
+      setAiCards(defaultCards);
+      toast((error as Error).message || 'Failed to fetch owner AI analytics', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [defaultCards, nav, toast]);
 
   useEffect(() => {
-    let alive = true;
+    void hydrateAnalytics();
+  }, [hydrateAnalytics]);
 
-    const hydrateAssist = async () => {
-      try {
-        const response = await aiAssistApi({
-          prompt: 'Generate concise owner analytics actions for dispatch, risk, and pricing.',
-          language: 'en',
-          route: 'Nairobi-Nakuru',
-          departureTime: '14:00',
-          currentPrice: 900,
-          totalSeats: 49,
-          bookedSeats: 43,
-          noShowRate: 0.1,
-          riskFactors: {
-            weatherRisk: 0.31,
-            trafficRisk: 0.55,
-            routeRisk: 0.38,
-          },
-          fraudSignals: {
-            attemptsLast24h: 2,
-            cardMismatch: false,
-            rapidRetries: 1,
-            geoMismatch: false,
-          },
-          trips: [
-            { id: 'nbi-nkr-0800', route: 'Nairobi-Nakuru', price: 850, travelMinutes: 130, reliabilityScore: 0.92 },
-            { id: 'nbi-nkr-1400', route: 'Nairobi-Nakuru', price: 900, travelMinutes: 140, reliabilityScore: 0.88 },
-            { id: 'nbi-ksm-0900', route: 'Nairobi-Kisumu', price: 1450, travelMinutes: 350, reliabilityScore: 0.81 },
-          ],
-          intent: {
-            maxBudget: 1000,
-            maxTravelMinutes: 180,
-          },
-        });
+  const routePerf = context?.analytics?.routePerformance || [];
+  const revenueTrend = context?.analytics?.revenueTrend || [];
 
-        if (!alive) return;
-
-        const modules = response.data.modules;
-        setAiSummary(response.data.summary.passengerMessage || 'AI owner summary ready.');
-        setAiCards([
-          {
-            type: 'Capacity Forecaster',
-            icon: '📦',
-            result: `Action ${modules.operations.action.replace('_', ' ')} · ${(modules.operations.occupancyRate * 100).toFixed(0)}% occupied`,
-            detail: modules.operations.dispatchAdvice,
-            confidence: Math.round((modules.operations.confidence || 0) * 100),
-            actionLabel: 'Apply dispatch plan',
-            onAction: () => nav('/owner/fleet'),
-            accentColor: 'var(--brand)',
-          },
-          {
-            type: 'Delay Risk Guard',
-            icon: '⏱️',
-            result: `${modules.delayRisk.riskLevel.toUpperCase()} risk · score ${(modules.delayRisk.riskScore * 100).toFixed(0)}%`,
-            detail: modules.delayRisk.recommendation,
-            confidence: Math.round((modules.delayRisk.confidence || 0) * 100),
-            actionLabel: 'Notify passengers',
-            onAction: () => nav('/owner/bookings'),
-            accentColor: '#ef4444',
-          },
-          {
-            type: 'Fare Optimizer',
-            icon: '💰',
-            result: `KES ${modules.pricing.currentPrice.toFixed(0)} → KES ${modules.pricing.predictedPrice.toFixed(0)}`,
-            detail: `Demand ${modules.pricing.demandLevel}. Best window: ${modules.pricing.cheaperWindowSuggestion}.`,
-            confidence: Math.round((modules.pricing.confidence || 0) * 100),
-            actionLabel: 'Apply pricing change',
-            onAction: () => nav('/owner/payments'),
-            accentColor: '#f59e0b',
-          },
-        ]);
-      } catch {
-        if (!alive) return;
-        setAiSummary('Live AI service unavailable. Showing owner fallback analytics from local trend model.');
-      }
-    };
-
-    void hydrateAssist();
-    return () => {
-      alive = false;
-    };
-  }, [nav]);
+  const statTrips = context?.operations.totalUpcomingTrips ?? 0;
+  const statOccupancy = context?.operations.overallOccupancyRate ?? 0;
+  const statRevenue = revenueTrend.reduce((sum, row) => sum + row.amount, 0);
+  const statVehicles = `${context?.operations.activeVehicles ?? 0}/${context?.operations.totalVehicles ?? 0}`;
 
   return (
-    <DashboardLayout title="Analytics" subtitle="Performance insights"
-      actions={<button className="btn btn-primary btn-sm" onClick={()=>toast('AI analytics refreshed')}>Refresh AI</button>}>
+    <DashboardLayout
+      title="Analytics"
+      subtitle="Performance insights from backend and database"
+      actions={
+        <button className="btn btn-primary btn-sm" onClick={() => void hydrateAnalytics()}>
+          Refresh AI
+        </button>
+      }
+    >
       <AiBanner text={`<strong>AI Insight:</strong> ${aiSummary}`} />
 
       <div style={{ margin: '16px 0 24px' }}>
         <AiAgentPanel
           title="Owner Autonomous Analytics"
-          subtitle="AI dispatch, delay, and pricing decisions for next departures"
-          cards={aiCards}
+          subtitle="AI dispatch, delay, and pricing decisions from live backend context"
+          cards={aiCards.length ? aiCards : defaultCards}
           cols={3}
         />
       </div>
 
       <div className="stat-grid mb-6">
-        <StatTile label="Trips this week" value="41" sub="+6 vs last week" />
-        <StatTile label="Avg occupancy" value="84%" sub="High load factor" />
-        <StatTile label="Revenue (7d)" value="KES 386K" sub="Net after commission" />
-        <StatTile label="Delay incidents" value="3" sub="-2 vs previous week" />
+        <StatTile label="Upcoming trips" value={loading ? '...' : statTrips} sub="From scheduled DB trips" />
+        <StatTile
+          label="Avg occupancy"
+          value={loading ? '...' : `${Math.round(statOccupancy * 100)}%`}
+          sub="Across upcoming trips"
+        />
+        <StatTile
+          label="Revenue (7d)"
+          value={loading ? '...' : `KES ${Math.round(statRevenue).toLocaleString()}`}
+          sub="Pending + confirmed bookings"
+        />
+        <StatTile label="Active vehicles" value={loading ? '...' : statVehicles} sub="Operational / total" />
       </div>
 
       <div className="grid-2">
         <div className="card">
-          <div className="card-title">Route performance (last 7 days)</div>
-          {[['Nairobi→Nakuru', 92, '1,146 pax'], ['Nairobi→Kisumu', 73, '738 pax'], ['Nairobi→Mombasa', 69, '661 pax'], ['Nairobi→Eldoret', 58, '512 pax']].map(([route, pct, val]) => (
-            <ChartBar key={route as string} label={route as string} pct={pct as number} display={`${pct}%`} val={val as string} />
+          <div className="card-title">Route performance (live)</div>
+          {routePerf.length === 0 && <p className="text-sm text-muted">No route performance data available.</p>}
+          {routePerf.slice(0, 6).map((row) => (
+            <ChartBar
+              key={row.id}
+              label={row.route}
+              pct={Math.max(1, Math.min(100, Math.round(row.avgOccupancyRate * 100)))}
+              display={`${Math.round(row.avgOccupancyRate * 100)}%`}
+              val={`${row.passengerCount} pax`}
+            />
           ))}
         </div>
+
         <div className="card">
-          <div className="card-title">Revenue trend (KES)</div>
-          {[['Mon', 54, '42K'], ['Tue', 61, '48K'], ['Wed', 74, '59K'], ['Thu', 80, '64K'], ['Fri', 96, '78K'], ['Sat', 89, '71K'], ['Sun', 67, '52K']].map(([day, pct, val]) => (
-            <ChartBar key={day as string} label={day as string} pct={pct as number} display={val as string} val={val as string} />
-          ))}
+          <div className="card-title">Revenue trend (last 7 days)</div>
+          {revenueTrend.length === 0 && <p className="text-sm text-muted">No revenue trend data available.</p>}
+          {revenueTrend.map((row) => {
+            const maxAmount = Math.max(1, ...revenueTrend.map((x) => x.amount));
+            const pct = Math.max(1, Math.round((row.amount / maxAmount) * 100));
+            return (
+              <ChartBar
+                key={row.date}
+                label={row.day}
+                pct={pct}
+                display={`KES ${Math.round(row.amount).toLocaleString()}`}
+                val={`KES ${Math.round(row.amount).toLocaleString()}`}
+              />
+            );
+          })}
         </div>
       </div>
     </DashboardLayout>

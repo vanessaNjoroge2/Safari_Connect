@@ -32,29 +32,30 @@ export default function Ticket() {
     })();
   }, [bookingId, toast]);
 
-  const ref = liveTicket?.bookingCode || booking.bookingRef || 'SC-2026-00892';
+  const ref = liveTicket?.bookingCode || booking.bookingRef || 'N/A';
   const passengerName = liveTicket
     ? `${liveTicket.firstName} ${liveTicket.lastName}`
-    : `${booking.passenger?.firstName ?? 'Jane'} ${booking.passenger?.lastName ?? 'Mwangi'}`;
-  const passengerId = liveTicket?.nationalId || booking.passenger?.idNumber || '23456789';
-  const saccoName = liveTicket?.trip?.sacco?.name || booking.selectedBus?.saccoName || 'Modern Coast';
+    : `${booking.passenger?.firstName ?? '-'} ${booking.passenger?.lastName ?? ''}`.trim();
+  const passengerId = liveTicket?.nationalId || booking.passenger?.idNumber || '-';
+  const saccoName = liveTicket?.trip?.sacco?.name || booking.selectedBus?.saccoName || '-';
+  const routeName = `${booking.searchQuery?.from ?? '-'} to ${booking.searchQuery?.to ?? '-'}`;
   const tripDate = liveTicket
     ? new Date(liveTicket.trip.departureTime).toLocaleDateString('en-KE', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
       })
-    : booking.searchQuery?.date || 'Wed 18 Mar 2026';
+    : booking.searchQuery?.date || '-';
   const departure = liveTicket
     ? new Date(liveTicket.trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' })
-    : '8:00 AM';
+    : booking.selectedBus?.departureTime || '-';
   const arrival = liveTicket
     ? new Date(liveTicket.trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' })
-    : '11:30 AM (estimated)';
+    : booking.selectedBus?.arrivalTime || '-';
   const seat = liveTicket
     ? `${liveTicket.seat?.seatNumber ?? '-'} · ${liveTicket.seat?.seatClass ?? ''}`
-    : `${booking.selectedSeat ?? '14B'} · ${booking.seatClass ?? 'Economy'}`;
-  const amount = liveTicket?.amount ?? booking.fare ?? 850;
+    : `${booking.selectedSeat ?? '-'} · ${booking.seatClass ?? '-'}`;
+  const amount = liveTicket?.amount ?? booking.fare ?? 0;
 
   return (
     <DashboardLayout title="Booking confirmed" subtitle="Your e-ticket is ready">
@@ -65,7 +66,7 @@ export default function Ticket() {
       <div style={{ background: 'var(--brand-light)', border: '1px solid var(--brand-mid)', borderRadius: 'var(--r-lg)', padding: '14px 20px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 14 }}>
         <span className="ai-chip">Confirmed</span>
         <span style={{ fontSize: 14, color: 'var(--gray-700)' }}>
-          <strong>Payment received.</strong> Your seat {liveTicket?.seat?.seatNumber ?? booking.selectedSeat ?? '14B'} is reserved.
+          <strong>Payment received.</strong> Your seat {liveTicket?.seat?.seatNumber ?? booking.selectedSeat ?? '-'} is reserved.
           Arrive at the stage by 7:40 AM. Safe journey!
         </span>
       </div>
@@ -74,7 +75,7 @@ export default function Ticket() {
         <div className="ticket">
           <div className="ticket-head">
             <div className="ticket-brand">SafiriConnect · E-Ticket</div>
-            <div className="ticket-route">Nairobi to Nakuru</div>
+            <div className="ticket-route">{routeName}</div>
             <div className="ticket-ref">Ref: {ref}</div>
           </div>
 

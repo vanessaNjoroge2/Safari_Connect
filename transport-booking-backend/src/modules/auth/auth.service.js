@@ -127,3 +127,78 @@ export const getCurrentUser = async (userId) => {
     ownerProfile: user.ownerProfile,
   };
 };
+
+export const updateCurrentUser = async (userId, payload) => {
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { ownerProfile: true },
+  });
+
+  if (!currentUser) {
+    throw new Error("User not found");
+  }
+
+  const firstName = payload.firstName?.trim();
+  const lastName = payload.lastName?.trim();
+  const email = payload.email?.trim().toLowerCase();
+  const phone = payload.phone?.trim();
+
+  if (email || phone) {
+    const conflictingUser = await prisma.user.findFirst({
+      where: {
+        id: { not: userId },
+        OR: [
+          ...(email ? [{ email }] : []),
+          ...(phone ? [{ phone }] : []),
+        ],
+      },
+    });
+
+    if (conflictingUser) {
+      throw new Error("Email or phone is already in use");
+    }
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+      ...(email ? { email } : {}),
+      ...(phone ? { phone } : {}),
+    },
+    include: { ownerProfile: true },
+  });
+
+  return {
+    id: updated.id,
+    firstName: updated.firstName,
+    lastName: updated.lastName,
+    email: updated.email,
+    phone: updated.phone,
+    role: updated.role,
+    status: updated.status,
+    ownerProfile: updated.ownerProfile,
+  };
+};
+
+export const changeCurrentUserPassword = async (userId, payload) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const validCurrentPassword = await comparePassword(payload.currentPassword, user.password);
+  if (!validCurrentPassword) {
+    throw new Error("Current password is incorrect");
+  }
+
+  const hashedNewPassword = await hashPassword(payload.newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashedNewPassword },
+  });
+
+  return true;
+};

@@ -1,46 +1,139 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
-import { Badge } from '../../components/UI';
+import { Badge, Modal } from '../../components/UI';
+import { useToast } from '../../hooks/useToast';
+import { getAdminBookingsApi } from '../../lib/api';
 import type { BadgeVariant } from '../../types';
 
 interface Booking {
-  ref: string; passenger: string; route: string; sacco: string;
-  date: string; seat: string; fare: string;
-  status: string; variant: BadgeVariant; payment: string;
+  id: string;
+  ref: string;
+  passenger: string;
+  route: string;
+  sacco: string;
+  date: string;
+  seat: string;
+  fare: string;
+  status: string;
+  variant: BadgeVariant;
+  payment: string;
 }
-
-const ALL_BOOKINGS: Booking[] = [
-  { ref:'SC-2026-00892', passenger:'Virginia Wamaitha', route:'Nairobi → Nakuru',  sacco:'Modern Coast', date:'18 Mar 2026', seat:'14B Economy', fare:'KES 850',   status:'Upcoming',  variant:'amber', payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00891', passenger:'James Kariuki',     route:'Nairobi → Mombasa', sacco:'Easy Coach',   date:'18 Mar 2026', seat:'5A VIP',      fare:'KES 2,200', status:'On Route',  variant:'blue',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00890', passenger:'Faith Njeri',       route:'Nairobi → Kisumu',  sacco:'Modern Coast', date:'17 Mar 2026', seat:'22C Economy', fare:'KES 1,100', status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00889', passenger:'Peter Odhiambo',    route:'Nairobi → Eldoret', sacco:'Eldoret Exp.', date:'17 Mar 2026', seat:'8A Business', fare:'KES 1,200', status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00888', passenger:'Lucy Wanjiru',      route:'Mombasa → Malindi', sacco:'Coast Bus',    date:'17 Mar 2026', seat:'3B Economy',  fare:'KES 450',   status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00887', passenger:'Samuel Mutua',      route:'Nairobi → Nakuru',  sacco:'City Express', date:'16 Mar 2026', seat:'11D Economy', fare:'KES 850',   status:'Cancelled', variant:'red',   payment:'Refunded'  },
-  { ref:'SC-2026-00886', passenger:'Diana Achieng',     route:'Nairobi → Mombasa', sacco:'Easy Coach',   date:'16 Mar 2026', seat:'7C Business', fare:'KES 1,500', status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00885', passenger:'Brian Kimani',      route:'Nairobi → Kisumu',  sacco:'Modern Coast', date:'15 Mar 2026', seat:'2A VIP',      fare:'KES 1,800', status:'Disputed',  variant:'red',   payment:'Pending'   },
-  { ref:'SC-2026-00884', passenger:'Grace Muthoni',     route:'Nairobi → Eldoret', sacco:'Eldoret Exp.', date:'15 Mar 2026', seat:'19B Economy', fare:'KES 900',   status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-  { ref:'SC-2026-00883', passenger:'Kevin Otieno',      route:'Nairobi → Nakuru',  sacco:'Modern Coast', date:'14 Mar 2026', seat:'6C Economy',  fare:'KES 850',   status:'Completed', variant:'gray',  payment:'M-Pesa ✓' },
-];
 
 const FILTERS = ['All', 'Upcoming', 'On Route', 'Completed', 'Cancelled', 'Disputed'];
 
+const statusToBadge: Record<string, BadgeVariant> = {
+  Upcoming: 'amber',
+  'On Route': 'blue',
+  Completed: 'gray',
+  Cancelled: 'red',
+  Disputed: 'red',
+};
+
+const statusToApiFilter: Record<string, 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED'> = {
+  All: 'ALL',
+  Upcoming: 'PENDING',
+  'On Route': 'CONFIRMED',
+  Completed: 'CONFIRMED',
+  Cancelled: 'CANCELLED',
+  Disputed: 'PENDING',
+};
+
 export default function AdminBookings() {
+  const toast = useToast();
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Booking[]>([]);
+  const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
 
-  const visible = ALL_BOOKINGS.filter(b => {
-    const matchFilter = filter === 'All' || b.status === filter;
-    const q = search.toLowerCase();
-    const matchSearch = !q || b.ref.toLowerCase().includes(q) ||
-      b.passenger.toLowerCase().includes(q) || b.route.toLowerCase().includes(q);
-    return matchFilter && matchSearch;
-  });
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      setLoading(true);
+      try {
+        const response = await getAdminBookingsApi({
+          status: statusToApiFilter[filter],
+          q: search.trim() || undefined,
+          limit: 300,
+        });
+
+        if (!mounted) return;
+
+        const mapped = response.data
+          .map((item) => ({
+            id: item.id,
+            ref: item.bookingCode,
+            passenger: item.passengerName,
+            route: item.route,
+            sacco: item.saccoName,
+            date: new Date(item.createdAt).toLocaleDateString('en-KE', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            }),
+            seat: item.seatLabel,
+            fare: `KES ${Math.round(item.amount).toLocaleString()}`,
+            status: item.statusLabel,
+            variant: statusToBadge[item.statusLabel] || 'gray',
+            payment: item.paymentLabel,
+          }))
+          .filter((item) => (filter === 'Disputed' ? item.status === 'Disputed' : true));
+
+        setRows(mapped);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      mounted = false;
+    };
+  }, [filter, search]);
+
+  const visible = useMemo(() => rows, [rows]);
+
+  const exportCsv = () => {
+    if (visible.length === 0) {
+      toast('No bookings to export', 'warning');
+      return;
+    }
+
+    const headers = ['Booking Ref', 'Passenger', 'Route', 'SACCO', 'Date', 'Seat', 'Fare', 'Payment', 'Status'];
+    const escapeValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const lines = [
+      headers.map(escapeValue).join(','),
+      ...visible.map((b) => [
+        b.ref,
+        b.passenger,
+        b.route,
+        b.sacco,
+        b.date,
+        b.seat,
+        b.fare,
+        b.payment,
+        b.status,
+      ].map(escapeValue).join(',')),
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bookings-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast('Bookings exported', 'success');
+  };
 
   return (
     <DashboardLayout
       title="Booking Oversight"
       subtitle="All platform bookings — monitor, filter, and investigate"
-      actions={<button className="btn btn-primary btn-sm">Export</button>}
+      actions={<button className="btn btn-primary btn-sm" onClick={exportCsv}>Export</button>}
     >
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <input className="input" placeholder="Search by ref, passenger, route…"
@@ -52,7 +145,7 @@ export default function AdminBookings() {
               onClick={() => setFilter(f)}>{f}</button>
           ))}
         </div>
-        <span className="text-muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visible.length} results</span>
+        <span className="text-muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{loading ? 'Loading...' : `${visible.length} results`}</span>
       </div>
 
       <div className="table-wrap">
@@ -75,15 +168,39 @@ export default function AdminBookings() {
                   {b.payment}
                 </td>
                 <td><Badge variant={b.variant}>{b.status}</Badge></td>
-                <td><button className="btn btn-sm">View</button></td>
+                <td><button className="btn btn-sm" onClick={() => setActiveBooking(b)}>View</button></td>
               </tr>
             ))}
-            {visible.length === 0 && (
+            {!loading && visible.length === 0 && (
               <tr><td colSpan={10} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>No bookings match this filter.</td></tr>
+            )}
+            {loading && (
+              <tr><td colSpan={10} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>Loading bookings...</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <Modal
+        open={Boolean(activeBooking)}
+        onClose={() => setActiveBooking(null)}
+        title="Booking details"
+        width={520}
+      >
+        {activeBooking && (
+          <div style={{ padding: 20, display: 'grid', gap: 12, fontSize: 13 }}>
+            <div><strong>Booking ref:</strong> {activeBooking.ref}</div>
+            <div><strong>Passenger:</strong> {activeBooking.passenger}</div>
+            <div><strong>Route:</strong> {activeBooking.route}</div>
+            <div><strong>SACCO:</strong> {activeBooking.sacco}</div>
+            <div><strong>Date:</strong> {activeBooking.date}</div>
+            <div><strong>Seat:</strong> {activeBooking.seat}</div>
+            <div><strong>Fare:</strong> {activeBooking.fare}</div>
+            <div><strong>Payment:</strong> {activeBooking.payment}</div>
+            <div><strong>Status:</strong> {activeBooking.status}</div>
+          </div>
+        )}
+      </Modal>
     </DashboardLayout>
   );
 }

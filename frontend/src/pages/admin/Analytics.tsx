@@ -3,46 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { StatTile, ChartBar, AiBanner, AiAgentPanel } from '../../components/UI';
 import { Badge } from '../../components/UI';
-import { aiAssistApi } from '../../lib/api';
-
-const MONTHLY = [
-  { month: 'Oct 2025', revenue: 2.1, bookings: 4210, pct: 48 },
-  { month: 'Nov 2025', revenue: 2.8, bookings: 5600, pct: 64 },
-  { month: 'Dec 2025', revenue: 3.9, bookings: 7800, pct: 89 },
-  { month: 'Jan 2026', revenue: 3.2, bookings: 6400, pct: 73 },
-  { month: 'Feb 2026', revenue: 3.6, bookings: 7200, pct: 82 },
-  { month: 'Mar 2026', revenue: 4.2, bookings: 8910, pct: 96 },
-];
-
-const TOP_ROUTES = [
-  { route: 'Nairobi → Mombasa', bookings: 2840, pct: 100, revenue: 'KES 4.3M' },
-  { route: 'Nairobi → Nakuru',  bookings: 2210, pct: 78,  revenue: 'KES 1.9M' },
-  { route: 'Nairobi → Kisumu',  bookings: 1760, pct: 62,  revenue: 'KES 2.0M' },
-  { route: 'Nairobi → Eldoret', bookings: 1340, pct: 47,  revenue: 'KES 1.2M' },
-  { route: 'Mombasa → Malindi', bookings:  890, pct: 31,  revenue: 'KES 535K' },
-];
-
-const TOP_SACCOS = [
-  { name: 'Easy Coach',    share: 31, revenue: 'KES 1.30M', growth: '+14%', variant: 'green'  },
-  { name: 'Modern Coast',  share: 24, revenue: 'KES 1.01M', growth: '+9%',  variant: 'green'  },
-  { name: 'Eldoret Exp.',  share: 18, revenue: 'KES 756K',  growth: '+5%',  variant: 'green'  },
-  { name: 'City Express',  share: 12, revenue: 'KES 504K',  growth: '-2%',  variant: 'amber'  },
-  { name: 'Coast Bus',     share:  9, revenue: 'KES 378K',  growth: '+11%', variant: 'green'  },
-  { name: 'Others',        share:  6, revenue: 'KES 252K',  growth: '—',    variant: 'gray'   },
-];
+import { getAdminAnalyticsApi } from '../../lib/api';
 
 export default function AdminAnalytics() {
   const nav = useNavigate();
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSummary, setAiSummary] = useState('AI analysing platform demand, risk, and revenue opportunities.');
+  const [aiSummary, setAiSummary] = useState('Analytics loaded.');
+  const [analytics, setAnalytics] = useState<{ months: Array<{ month: string; revenue: number; bookings: number }>; topRoutes: Array<{ route: string; bookings: number; revenue: number }>; topSaccos: Array<{ name: string; revenue: number; bookings: number }> } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [aiCards, setAiCards] = useState([
     {
       type: 'Fraud Control',
       icon: '🛡️',
-      result: 'Scanning transaction stream',
-      detail: 'Live fraud monitor warming up for this reporting period.',
-      confidence: 72,
+      result: 'Awaiting analytics data',
+      detail: 'Load platform analytics to generate live fraud indicators.',
+      confidence: 0,
       actionLabel: 'Open bookings',
       onAction: () => nav('/admin/bookings'),
       accentColor: '#ef4444',
@@ -50,9 +25,9 @@ export default function AdminAnalytics() {
     {
       type: 'Dispatch Optimizer',
       icon: '🚌',
-      result: 'Evaluating occupancy pressure',
-      detail: 'AI checking route demand and standby-vehicle requirements.',
-      confidence: 74,
+      result: 'Awaiting analytics data',
+      detail: 'Load platform analytics to evaluate dispatch pressure.',
+      confidence: 0,
       actionLabel: 'Open routes',
       onAction: () => nav('/admin/saccos'),
       accentColor: 'var(--brand)',
@@ -60,111 +35,95 @@ export default function AdminAnalytics() {
     {
       type: 'Pricing Intelligence',
       icon: '📈',
-      result: 'Predicting best fare window',
-      detail: 'Dynamic pricing model is preparing next route-level recommendation.',
-      confidence: 70,
+      result: 'Awaiting analytics data',
+      detail: 'Load platform analytics to project pricing insights.',
+      confidence: 0,
       actionLabel: 'View trends',
       onAction: () => nav('/admin/payments'),
       accentColor: '#7c3aed',
     },
   ]);
 
+  const aiSubtitle = useMemo(
+    () => (loading ? 'Loading analytics insights...' : 'Insights based on live platform analytics'),
+    [loading]
+  );
+
   useEffect(() => {
-    let alive = true;
+    let mounted = true;
 
-    const runAssist = async () => {
-      setAiLoading(true);
+    const run = async () => {
+      setLoading(true);
       try {
-        const response = await aiAssistApi({
-          prompt:
-            'You are platform AI. Summarize risk, dispatch, and pricing decisions for admin reporting in one concise action line.',
-          language: 'en',
-          route: 'Nairobi-Mombasa',
-          departureTime: '18:00',
-          currentPrice: 1500,
-          totalSeats: 52,
-          bookedSeats: 46,
-          noShowRate: 0.07,
-          riskFactors: {
-            weatherRisk: 0.28,
-            trafficRisk: 0.62,
-            routeRisk: 0.44,
-          },
-          fraudSignals: {
-            attemptsLast24h: 6,
-            cardMismatch: true,
-            rapidRetries: 3,
-            geoMismatch: false,
-          },
-          trips: [
-            { id: 'nbi-msa-easy-0600', route: 'Nairobi-Mombasa', price: 1500, travelMinutes: 420, reliabilityScore: 0.87 },
-            { id: 'nbi-msa-coast-0800', route: 'Nairobi-Mombasa', price: 1800, travelMinutes: 410, reliabilityScore: 0.82 },
-            { id: 'nbi-nkr-0800', route: 'Nairobi-Nakuru', price: 850, travelMinutes: 130, reliabilityScore: 0.91 },
-          ],
-          intent: {
-            maxBudget: 1900,
-            maxTravelMinutes: 430,
-          },
-        });
-
-        if (!alive) return;
-
-        const modules = response.data.modules;
-        const fraudPct = Math.round((modules.fraud.confidence || 0) * 100);
-        const operationsPct = Math.round((modules.operations.confidence || 0) * 100);
-        const pricingPct = Math.round((modules.pricing.confidence || 0) * 100);
-
-        setAiSummary(response.data.summary.passengerMessage || 'AI summary ready for reporting.');
-        setAiCards([
-          {
-            type: 'Fraud Control',
-            icon: '🛡️',
-            result: `Decision: ${modules.fraud.decision.toUpperCase()} · Score ${(modules.fraud.fraudScore * 100).toFixed(0)}%`,
-            detail: 'Autonomous risk scoring reviewed payment velocity and retry patterns for live booking stream.',
-            confidence: fraudPct,
-            actionLabel: 'Review fraud queue',
-            onAction: () => nav('/admin/bookings'),
-            accentColor: '#ef4444',
-          },
-          {
-            type: 'Dispatch Optimizer',
-            icon: '🚌',
-            result: `Action: ${modules.operations.action.replace('_', ' ')} · Occupancy ${(modules.operations.occupancyRate * 100).toFixed(0)}%`,
-            detail: modules.operations.dispatchAdvice,
-            confidence: operationsPct,
-            actionLabel: 'Open route operations',
-            onAction: () => nav('/admin/saccos'),
-            accentColor: 'var(--brand)',
-          },
-          {
-            type: 'Pricing Intelligence',
-            icon: '📈',
-            result: `KES ${modules.pricing.currentPrice.toLocaleString()} → KES ${modules.pricing.predictedPrice.toLocaleString()}`,
-            detail: `Demand ${modules.pricing.demandLevel}. Suggested cheaper window: ${modules.pricing.cheaperWindowSuggestion}.`,
-            confidence: pricingPct,
-            actionLabel: 'Apply pricing policy',
-            onAction: () => nav('/admin/payments'),
-            accentColor: '#7c3aed',
-          },
-        ]);
-      } catch {
-        if (!alive) return;
-        setAiSummary('Live AI service unavailable. Showing autonomous fallback strategy based on current platform trends.');
+        const response = await getAdminAnalyticsApi();
+        if (mounted) setAnalytics(response.data);
       } finally {
-        if (alive) setAiLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    void runAssist();
+    void run();
     return () => {
-      alive = false;
+      mounted = false;
     };
-  }, [nav]);
+  }, []);
 
-  const aiSubtitle = useMemo(
-    () => (aiLoading ? 'Refreshing recommendations from Safiri autonomous agent...' : 'Autonomous insights for fraud, dispatch, and pricing actions'),
-    [aiLoading]
-  );
+  useEffect(() => {
+    if (!analytics) return;
+
+    const totalRevenue = analytics.months.reduce((sum, m) => sum + m.revenue, 0);
+    const totalBookings = analytics.months.reduce((sum, m) => sum + m.bookings, 0);
+    const topRoute = analytics.topRoutes[0];
+    const topSacco = analytics.topSaccos[0];
+
+    setAiSummary(
+      topRoute
+        ? `Top route is ${topRoute.route} with ${topRoute.bookings} bookings. Total revenue across 6 months is KES ${Math.round(totalRevenue * 1_000_000).toLocaleString()}.`
+        : `Analytics loaded. Total revenue across 6 months is KES ${Math.round(totalRevenue * 1_000_000).toLocaleString()}.`
+    );
+
+    setAiCards([
+      {
+        type: 'Fraud Control',
+        icon: '🛡️',
+        result: `${totalBookings} bookings analysed`,
+        detail: 'Review bookings and failed payments for anomalies based on live platform data.',
+        confidence: totalBookings ? 82 : 0,
+        actionLabel: 'Review bookings',
+        onAction: () => nav('/admin/bookings'),
+        accentColor: '#ef4444',
+      },
+      {
+        type: 'Dispatch Optimizer',
+        icon: '🚌',
+        result: topRoute ? `Top demand: ${topRoute.route}` : 'Demand data unavailable',
+        detail: topRoute
+          ? `Highest route volume is ${topRoute.bookings} bookings. Prioritize capacity and standby vehicles.`
+          : 'No route volume data available to guide dispatch.',
+        confidence: topRoute ? 84 : 0,
+        actionLabel: 'Open SACCOs',
+        onAction: () => nav('/admin/saccos'),
+        accentColor: 'var(--brand)',
+      },
+      {
+        type: 'Pricing Intelligence',
+        icon: '📈',
+        result: topSacco ? `Top revenue: ${topSacco.name}` : 'Revenue data unavailable',
+        detail: topSacco
+          ? `Top SACCO revenue is KES ${Math.round(topSacco.revenue).toLocaleString()}. Adjust pricing policies accordingly.`
+          : 'No SACCO revenue data available to guide pricing.',
+        confidence: topSacco ? 78 : 0,
+        actionLabel: 'View payments',
+        onAction: () => nav('/admin/payments'),
+        accentColor: '#7c3aed',
+      },
+    ]);
+  }, [analytics, nav]);
+
+  const monthly = analytics?.months || [];
+  const topRoutes = analytics?.topRoutes || [];
+  const topSaccos = analytics?.topSaccos || [];
+  const maxRouteBookings = Math.max(1, ...topRoutes.map((r) => r.bookings));
 
   return (
     <DashboardLayout
@@ -196,31 +155,39 @@ export default function AdminAnalytics() {
 
       {/* KPIs */}
       <div className="stat-grid" style={{ marginBottom: 28 }}>
-        <StatTile label="Gross Revenue (Mar)" value="KES 4.2M" sub="+17% vs Feb" />
-        <StatTile label="Total Bookings"       value="8,910"    sub="+1,710 this month" />
-        <StatTile label="Active SACCOs"        value="34"       sub="2 pending approval" />
-        <StatTile label="Platform Commission"  value="KES 210K" sub="5% avg rate" />
-        <StatTile label="Avg Fare"             value="KES 1,150" sub="Across all routes" />
-        <StatTile label="Refund Rate"          value="1.8%"     sub="↓ from 2.4% last month" />
-        <StatTile label="New Users (Mar)"      value="1,240"    sub="+204 WoW" />
-        <StatTile label="Repeat Booking Rate"  value="68%"      sub="Strong loyalty" />
+        <StatTile label="Gross Revenue (6 mo)" value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue, 0) * 1_000_000).toLocaleString()}`} />
+        <StatTile label="Total Bookings"       value={loading ? '...' : monthly.reduce((sum, m) => sum + m.bookings, 0).toLocaleString()} />
+        <StatTile label="Active SACCOs"        value={loading ? '...' : topSaccos.length.toLocaleString()} />
+        <StatTile label="Platform Commission"  value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue * 1_000_000, 0) * 0.05).toLocaleString()}`} />
+        <StatTile label="Avg Fare"             value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue * 1_000_000, 0) / Math.max(1, monthly.reduce((sum, m) => sum + m.bookings, 0))).toLocaleString()}`} />
+        <StatTile label="Refund Rate"          value="—" sub="Awaiting refunds model" />
+        <StatTile label="New Users (Mar)"      value="—" sub="Awaiting user growth model" />
+        <StatTile label="Repeat Booking Rate"  value="—" sub="Awaiting cohort model" />
       </div>
 
       <div className="grid-2" style={{ gap: 20, marginBottom: 24 }}>
         {/* Monthly revenue bars */}
         <div className="card">
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Monthly Revenue (KES M)</div>
-          {MONTHLY.map(m => (
-            <ChartBar key={m.month} label={m.month} pct={m.pct} display={`KES ${m.revenue}M`} val={`${m.bookings.toLocaleString()} trips`} />
-          ))}
+          {monthly.length ? (
+            monthly.map((m) => (
+              <ChartBar key={m.month} label={m.month} pct={Math.min(100, Math.round(m.revenue * 20))} display={`KES ${m.revenue}M`} val={`${m.bookings.toLocaleString()} trips`} />
+            ))
+          ) : (
+            <p className="text-sm text-muted">No analytics available yet.</p>
+          )}
         </div>
 
         {/* Top routes */}
         <div className="card">
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Top Routes by Volume</div>
-          {TOP_ROUTES.map(r => (
-            <ChartBar key={r.route} label={r.route} pct={r.pct} display={r.bookings.toLocaleString()} val={r.revenue} />
-          ))}
+          {topRoutes.length ? (
+            topRoutes.map((r) => (
+              <ChartBar key={r.route} label={r.route} pct={Math.round((r.bookings / maxRouteBookings) * 100)} display={r.bookings.toLocaleString()} val={`KES ${Math.round(r.revenue).toLocaleString()}`} />
+            ))
+          ) : (
+            <p className="text-sm text-muted">No route analytics available.</p>
+          )}
         </div>
       </div>
 
@@ -238,21 +205,25 @@ export default function AdminAnalytics() {
               </tr>
             </thead>
             <tbody>
-              {TOP_SACCOS.map(s => (
-                <tr key={s.name}>
-                  <td style={{ fontWeight: 600 }}>{s.name}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ flex: 1, height: 8, background: 'var(--gray-100)', borderRadius: 99, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${s.share * 3}%`, background: 'var(--brand)', borderRadius: 99 }} />
+              {topSaccos.length ? (
+                topSaccos.map((s) => (
+                  <tr key={s.name}>
+                    <td style={{ fontWeight: 600 }}>{s.name}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, height: 8, background: 'var(--gray-100)', borderRadius: 99, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, Math.round((s.revenue / Math.max(1, topSaccos[0]?.revenue || 1)) * 100))}%`, background: 'var(--brand)', borderRadius: 99 }} />
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 32 }}>{Math.round((s.revenue / Math.max(1, topSaccos.reduce((sum, row) => sum + row.revenue, 0))) * 100)}%</span>
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 32 }}>{s.share}%</span>
-                    </div>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{s.revenue}</td>
-                  <td><Badge variant={s.variant as any}>{s.growth}</Badge></td>
-                </tr>
-              ))}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{`KES ${Math.round(s.revenue).toLocaleString()}`}</td>
+                    <td><Badge variant={'gray'}>{s.bookings} bookings</Badge></td>
+                  </tr>
+                ))
+              ) : (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 24 }}>No SACCO analytics yet.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

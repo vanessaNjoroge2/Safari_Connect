@@ -81,7 +81,11 @@ app.post("/v1/decision/assist", async (req, res) => {
       weatherRisk: body.riskFactors && body.riskFactors.weatherRisk,
       trafficRisk: body.riskFactors && body.riskFactors.trafficRisk
     });
-    const chat = await respondToPrompt({ text: body.prompt, language });
+    const chat = await respondToPrompt({
+      text: body.prompt,
+      language,
+      sessionId: body.sessionId
+    });
 
     const summary = {
       topAction:
@@ -119,7 +123,11 @@ app.post("/v1/chat/respond", async (req, res) => {
   try {
     const body = req.body || {};
     const language = normalizeLanguage(body.language, defaultLanguage, supportedLanguages);
-    const result = await respondToPrompt({ text: body.text, language });
+    const result = await respondToPrompt({
+      text: body.text,
+      language,
+      sessionId: body.sessionId
+    });
     res.json({ ...result, meta: buildMeta(req) });
   } catch (error) {
     res.status(500).json({ error: "chat_response_failed", message: error.message, meta: buildMeta(req) });

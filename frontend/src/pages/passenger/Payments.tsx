@@ -30,11 +30,11 @@ export default function PassengerPayments() {
     void (async () => {
       try {
         const result = await getMyBookingsApi();
-        const mapped = result.data.map((b, idx) => {
+        const mapped = result.data.map((b) => {
           const pay = mapPaymentStatus(b.payment?.status || 'PENDING');
           return {
             id: b.id,
-            ref: `PAY-${String(idx + 1).padStart(6, '0')}`,
+            ref: b.payment?.transactionRef || b.bookingCode,
             bookingRef: b.bookingCode,
             route: `${b.trip.route.origin} → ${b.trip.route.destination}`,
             date: new Date(b.createdAt).toLocaleDateString('en-KE', {
@@ -79,7 +79,7 @@ export default function PassengerPayments() {
         {[
           { label:'Total spent',      value:`KES ${total.toLocaleString()}`, sub:'All time' },
           { label:'Transactions',     value:rows.length,                     sub:'All time' },
-          { label:'Last payment',     value:rows[0]?.amount ?? 'KES 0',      sub:rows[0]?.date ?? '—' },
+          { label:'Last payment',     value:rows[0]?.amount ?? '—',      sub:rows[0]?.date ?? '—' },
         ].map(c => (
           <div key={c.label} className="card" style={{ padding:'20px 24px' }}>
             <div className="kpi-label">{c.label}</div>

@@ -1,13 +1,4 @@
 import { useNavigate } from 'react-router-dom';
-import type { UserRole } from '../types';
-
-interface RoleMeta { id: UserRole; icon: string; title: string; desc: string; color: string; badge: string; }
-
-const ROLES: RoleMeta[] = [
-  { id: 'passenger', icon: '👤', title: 'Passenger',   badge: 'Most popular', desc: 'Book trips, pay via M-Pesa, track live',  color: 'var(--brand)' },
-  { id: 'owner',     icon: '🏢', title: 'SACCO Owner', badge: 'Business', desc: 'Manage fleet, routes, and bookings',       color: '#3b82f6' },
-  { id: 'admin',     icon: '🛡️', title: 'Super Admin', badge: 'Admin', desc: 'Platform governance and analytics',        color: '#7c3aed' },
-];
 
 const FEATURES = [
   { icon: '🤖', title: 'AI-Powered Pricing',   desc: 'Dynamic fares adjust in real time based on demand and traffic patterns' },
@@ -54,11 +45,11 @@ export default function Welcome() {
             <button
               className="btn btn-ghost btn-sm"
               style={{ color: 'var(--gray-400)', border: '1px solid rgba(255,255,255,.1)' }}
-              onClick={() => navigate('/auth/login?role=passenger')}
+              onClick={() => navigate('/auth/login')}
             >
               Sign in
             </button>
-            <button className="btn btn-primary btn-sm" onClick={() => navigate('/auth/register?role=passenger')}>
+            <button className="btn btn-primary btn-sm" onClick={() => navigate('/auth/register')}>
               Get started free →
             </button>
           </div>
@@ -82,59 +73,20 @@ export default function Welcome() {
             pricing — all in one professional platform.
           </p>
 
-          {/* Role selector */}
-          <p style={{ color: 'var(--gray-500)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 14 }}>
-            Continue as —
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 36 }}>
-            {ROLES.map(r => (
-              <button
-                key={r.id}
-                onClick={() => navigate(`/auth/login?role=${r.id}`)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '14px 18px',
-                  background: 'rgba(255,255,255,.04)',
-                  border: '1.5px solid rgba(255,255,255,.09)',
-                  borderRadius: 14, cursor: 'pointer',
-                  transition: 'all .15s', textAlign: 'left', width: '100%',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = r.color;
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.07)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,.09)';
-                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.04)';
-                }}
-              >
-                <span style={{
-                  width: 44, height: 44,
-                  background: `${r.color}1a`,
-                  border: `1.5px solid ${r.color}33`,
-                  borderRadius: 10,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 20, flexShrink: 0,
-                }}>
-                  {r.icon}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <span style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>{r.title}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: `${r.color}22`, color: r.color, letterSpacing: '.04em' }}>{r.badge}</span>
-                  </div>
-                  <div style={{ color: 'var(--gray-400)', fontSize: 12 }}>{r.desc}</div>
-                </div>
-                <span style={{ color: 'var(--gray-500)', fontSize: 18, fontWeight: 300 }}>›</span>
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 36 }}>
+            <button className="btn btn-primary" onClick={() => navigate('/auth/register')}>
+              Create account {'->'}
+            </button>
+            <button className="btn" onClick={() => navigate('/auth/login')}>
+              Sign in {'->'}
+            </button>
           </div>
 
           <p style={{ fontSize: 13, color: 'var(--gray-600)' }}>
             Already have an account?{' '}
             <span
               style={{ color: 'var(--brand)', cursor: 'pointer', fontWeight: 600 }}
-              onClick={() => navigate('/auth/login?role=passenger')}
+              onClick={() => navigate('/auth/login')}
             >
               Sign in →
             </span>

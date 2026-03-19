@@ -403,6 +403,111 @@ async function main() {
     }
   }
 
+  // 6b. Deterministic fleet + popular routes for first owner (John / Safari Express)
+  const johnSacco = saccos.find((s) => s.slug === slugify("Safari Express"));
+  if (johnSacco) {
+    const johnFleetBlueprint = [
+      { name: "Safari Express Executive Coach", plateNumber: "KSA 101J", seatCapacity: 51 },
+      { name: "Safari Express City Shuttle", plateNumber: "KSA 102J", seatCapacity: 33 },
+      { name: "Safari Express Commuter Van", plateNumber: "KSA 103J", seatCapacity: 14 },
+      { name: "Safari Express Intercity Bus", plateNumber: "KSA 104J", seatCapacity: 24 },
+    ];
+
+    const johnBuses: Awaited<ReturnType<typeof prisma.bus.create>>[] = [];
+    for (const bp of johnFleetBlueprint) {
+      let bus = await prisma.bus.findUnique({ where: { plateNumber: bp.plateNumber } });
+      if (!bus) {
+        bus = await prisma.bus.create({
+          data: {
+            saccoId: johnSacco.id,
+            name: bp.name,
+            plateNumber: bp.plateNumber,
+            seatCapacity: bp.seatCapacity,
+            isActive: true,
+          },
+        });
+      }
+
+      const busSeats = await prisma.seat.findMany({ where: { busId: bus.id } });
+      if (busSeats.length === 0) {
+        const seats = buildSeatsForCapacity(bp.seatCapacity);
+        await prisma.seat.createMany({
+          data: seats.map((seat) => ({
+            busId: bus.id,
+            seatNumber: seat.seatNumber,
+            seatClass: seat.seatClass,
+            price: seat.price,
+          })),
+        });
+      }
+
+      johnBuses.push(bus);
+    }
+
+    const popularRouteDefs = [
+      ["Nairobi", "Nakuru", 160, 180],
+      ["Nairobi", "Mombasa", 480, 420],
+      ["Nairobi", "Kisumu", 350, 360],
+      ["Nairobi", "Eldoret", 310, 330],
+    ] as const;
+
+    const johnPopularRoutes = [];
+    for (const [origin, destination, distanceKm, estimatedTime] of popularRouteDefs) {
+      const route = await getOrCreateRoute(origin, destination, distanceKm, estimatedTime);
+      johnPopularRoutes.push(route);
+    }
+
+    for (let dayAhead = 1; dayAhead <= 14; dayAhead++) {
+      for (let routeIndex = 0; routeIndex < johnPopularRoutes.length; routeIndex++) {
+        const route = johnPopularRoutes[routeIndex];
+        const bus = johnBuses[(dayAhead + routeIndex) % johnBuses.length];
+
+        const departureSlots =
+          route.origin === "Nairobi" && route.destination === "Nakuru"
+            ? [6, 9, 14, 18]
+            : [7, 13];
+
+        for (const hour of departureSlots) {
+          const departureTime = startOfFutureDay(dayAhead, hour);
+          const arrivalTime = addMinutes(departureTime, route.estimatedTime || 180);
+
+          const existingTrip = await prisma.trip.findFirst({
+            where: {
+              saccoId: johnSacco.id,
+              busId: bus.id,
+              routeId: route.id,
+              departureTime,
+            },
+          });
+
+          if (!existingTrip) {
+            await prisma.trip.create({
+              data: {
+                saccoId: johnSacco.id,
+                busId: bus.id,
+                routeId: route.id,
+                tripType: "ONE_WAY",
+                departureTime,
+                arrivalTime,
+                basePrice:
+                  route.destination === "Nakuru"
+                    ? new Prisma.Decimal(900)
+                    : route.destination === "Mombasa"
+                      ? new Prisma.Decimal(2200)
+                      : route.destination === "Kisumu"
+                        ? new Prisma.Decimal(1700)
+                        : new Prisma.Decimal(1600),
+                aiAnalysis:
+                  "AI trip analysis: high-demand owner route seeded for Safari Express to support live dashboard recommendations.",
+                status: "SCHEDULED",
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
   // 7. Trips from January to today
   const dates = getDatesFromJanuaryToToday();
   const createdTrips: Array<{ id: string; busId: string; departureTime: Date }> = [];

@@ -1,9 +1,8 @@
 import type { FormEvent } from 'react';
 import { useState } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
-import type { UserRole } from '../../types';
 
 function PwdInput({ placeholder, value, onChange, hasError }: { placeholder: string; value: string; onChange: (v: string) => void; hasError?: boolean }) {
   const [show, setShow] = useState(false);
@@ -34,21 +33,17 @@ function PwdInput({ placeholder, value, onChange, hasError }: { placeholder: str
   );
 }
 
-interface RoleMeta { label: string; color: string; icon: string; dashboard: string; tagline: string; }
-const ROLE_META: Record<UserRole, RoleMeta> = {
-  passenger: { label: 'Passenger',   color: 'var(--brand)', icon: '👤', dashboard: '/passenger/home',   tagline: 'Book your next journey' },
-  owner:     { label: 'SACCO Owner', color: '#3b82f6',      icon: '🏢', dashboard: '/owner/dashboard', tagline: 'Manage your fleet & earnings' },
-  admin:     { label: 'Super Admin', color: '#7c3aed',      icon: '🛡️', dashboard: '/admin/dashboard',  tagline: 'Platform administration' },
-};
+const ROLE_HOME = {
+  passenger: '/passenger/home',
+  owner: '/owner/dashboard',
+  admin: '/admin/dashboard',
+} as const;
 
 interface FormState { email: string; password: string; }
 interface FormErrors { email?: string; password?: string; }
 
 export default function Login() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const role = (params.get('role') ?? 'passenger') as UserRole;
-  const meta = ROLE_META[role] ?? ROLE_META.passenger;
 
   const { login, isLoading } = useAuth();
   const toast = useToast();
@@ -68,17 +63,12 @@ export default function Login() {
     e.preventDefault();
     if (!validate()) return;
     try {
-      await login({ email: form.email, password: form.password, role });
-      toast(`Welcome back! Taking you to your ${meta.label} dashboard.`);
-      navigate(meta.dashboard);
+      const user = await login({ email: form.email, password: form.password });
+      toast('Welcome back! Redirecting to your dashboard.');
+      navigate(ROLE_HOME[user.role]);
     } catch {
       toast('Invalid credentials. Please try again.', 'error');
     }
-  };
-
-  const quickDemo = async (r: UserRole) => {
-    await login({ email: `demo-${r}@safiri.co.ke`, password: 'demo', role: r });
-    navigate(ROLE_META[r].dashboard);
   };
 
   return (
@@ -91,13 +81,13 @@ export default function Login() {
             Safiri<span style={{ color: 'var(--brand)' }}>Connect</span>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.12)', padding: '6px 14px', borderRadius: 99, marginBottom: 18 }}>
-            <span>{meta.icon}</span>
-            <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{meta.label} Portal</span>
+            <span>🔐</span>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>Unified Sign In</span>
           </div>
           <h2 style={{ color: '#fff', fontSize: '2rem', lineHeight: 1.2, marginBottom: 12 }}>
-            {role === 'passenger' ? 'Your journey\nstarts here.' : role === 'owner' ? 'Run your SACCO\nsmarter.' : 'Platform\ncontrol centre.'}
+            One account,<br />one secure login.
           </h2>
-          <p style={{ color: 'rgba(255,255,255,.55)', lineHeight: 1.75, fontSize: 14 }}>{meta.tagline}</p>
+          <p style={{ color: 'rgba(255,255,255,.55)', lineHeight: 1.75, fontSize: 14 }}>Sign in once and we route you to the correct workspace based on your backend account permissions.</p>
         </div>
 
         {/* Center: emblem + stats */}
@@ -154,19 +144,8 @@ export default function Login() {
             <h2 style={{ fontSize: '1.6rem', marginBottom: 6 }}>Sign in</h2>
             <p style={{ color: 'var(--gray-400)', fontSize: 14 }}>
               Don't have an account?{' '}
-              <Link to={`/auth/register?role=${role}`} style={{ color: 'var(--brand)', fontWeight: 600 }}>Create one free</Link>
+              <Link to="/auth/register" style={{ color: 'var(--brand)', fontWeight: 600 }}>Create one free</Link>
             </p>
-          </div>
-
-          {/* Role tabs */}
-          <div className="auth-tabs">
-            {(Object.entries(ROLE_META) as [UserRole, RoleMeta][]).map(([r, m]) => (
-              <div key={r} className={`auth-tab${role === r ? ' active' : ''}`}
-                style={role === r ? { borderColor: m.color, color: m.color } : {}}
-                onClick={() => navigate(`/auth/login?role=${r}`)}>
-                {m.icon} {m.label}
-              </div>
-            ))}
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -189,23 +168,10 @@ export default function Login() {
             </div>
 
             <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={isLoading}
-              style={{ background: meta.color, borderColor: meta.color, marginTop: 4 }}>
-              {isLoading ? 'Signing in…' : `Sign in as ${meta.label} →`}
+              style={{ marginTop: 4 }}>
+              {isLoading ? 'Signing in…' : 'Sign in →'}
             </button>
           </form>
-
-          <div className="divider-text">or continue with a demo account</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(Object.entries(ROLE_META) as [UserRole, RoleMeta][]).map(([r, m]) => (
-              <button key={r} className="btn btn-ghost"
-                style={{ justifyContent: 'flex-start', gap: 12, fontSize: 13 }}
-                onClick={() => quickDemo(r)}>
-                {m.icon}
-                <span style={{ color: 'var(--gray-700)' }}>Demo as <strong>{m.label}</strong></span>
-                <span style={{ marginLeft: 'auto', color: 'var(--gray-300)' }}>→</span>
-              </button>
-            ))}
-          </div>
 
           <p style={{ fontSize: 12, color: 'var(--gray-400)', textAlign: 'center', marginTop: 24 }}>
             By signing in you agree to our{' '}

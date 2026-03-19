@@ -9,7 +9,6 @@ export interface User {
   phone: string;
   role: UserRole;
   initials: string;
-  idNumber?: string;
   residence?: string;
   trustScore?: number;
 }
@@ -17,7 +16,6 @@ export interface User {
 export interface LoginPayload {
   email: string;
   password: string;
-  role: UserRole;
 }
 
 export interface RegisterPayload {
@@ -26,8 +24,7 @@ export interface RegisterPayload {
   email: string;
   phone: string;
   password: string;
-  role: UserRole;
-  idNumber?: string;
+  role?: UserRole;
   // Owner only
   saccoName?: string;
   regNumber?: string;

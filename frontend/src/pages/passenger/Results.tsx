@@ -31,7 +31,7 @@ export default function Results() {
   return (
     <DashboardLayout
       title="Available buses"
-      subtitle={`${booking.searchQuery?.from ?? 'Nairobi'} → ${booking.searchQuery?.to ?? 'Nakuru'} · ${booking.searchQuery?.date ?? 'Today'}`}
+      subtitle={`${booking.searchQuery?.from ?? '-'} -> ${booking.searchQuery?.to ?? '-'} | ${booking.searchQuery?.date ?? '-'}`}
       actions={<button className="btn btn-sm" onClick={() => navigate('/passenger/search')}>← Modify search</button>}
     >
       <AiBanner text="<strong>High demand detected.</strong> Fares are AI-priced up to 24% above standard — 89% of seats already filled across all buses. Book now to secure your seat." />

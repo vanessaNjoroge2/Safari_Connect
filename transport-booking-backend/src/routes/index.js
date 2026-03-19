@@ -3,6 +3,7 @@ import authRoutes from "../modules/auth/auth.routes.js";
 import aiRoutes from "../modules/ai/ai.routes.js";
 
 import categoryRoutes from "../modules/categories/category.routes.js";
+import adminRoutes from "../modules/admins/admin.routes.js";
 import saccoRoutes from "../modules/saccos/sacco.routes.js";
 import transportRouteRoutes from "../modules/routes/route.routes.js";
 import busRoutes from "../modules/buses/bus.routes.js";
@@ -15,6 +16,7 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/ai", aiRoutes);
 router.use("/categories", categoryRoutes);
+router.use("/admins", adminRoutes);
 router.use("/saccos", saccoRoutes);
 router.use("/routes", transportRouteRoutes);
 router.use("/buses", busRoutes);

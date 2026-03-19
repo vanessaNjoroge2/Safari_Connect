@@ -9,8 +9,8 @@ interface RequireAuthProps {
 
 const ROLE_HOME: Record<UserRole, string> = {
   passenger: '/passenger/home',
-  owner:     '/owner/dashboard',
-  admin:     '/admin/dashboard',
+  owner: '/owner/dashboard',
+  admin: '/admin/dashboard',
 };
 
 export default function RequireAuth({ role, children }: RequireAuthProps) {
@@ -26,7 +26,7 @@ export default function RequireAuth({ role, children }: RequireAuthProps) {
   }
 
   if (!user) {
-    const loginPath = role ? `/auth/login?role=${role}` : '/auth/login?role=passenger';
+    const loginPath = role ? `/auth/login?role=${role}` : '/auth/login';
     return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 

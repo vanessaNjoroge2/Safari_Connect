@@ -1,42 +1,144 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Badge } from '../../components/UI';
+import { getAdminUsersApi, updateAdminUserStatusApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 import type { BadgeVariant } from '../../types';
 
 interface User {
-  id: string; name: string; email: string; phone: string;
-  role: string; roleVariant: BadgeVariant; trustScore: number;
-  joined: string; trips: number; status: string; statusVariant: BadgeVariant;
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  roleVariant: BadgeVariant;
+  trustScore: number;
+  joined: string;
+  trips: number;
+  status: string;
+  statusVariant: BadgeVariant;
 }
-
-const USERS: User[] = [
-  { id:'USR-001', name:'Virginia Wamaitha', email:'wamaitha@gmail.com',       phone:'0712 345 678', role:'Passenger',   roleVariant:'green',  trustScore:94, joined:'Jan 2026', trips:12, status:'Active',   statusVariant:'green' },
-  { id:'USR-002', name:'James Kariuki',     email:'james.k@gmail.com',         phone:'0723 456 789', role:'Passenger',   roleVariant:'green',  trustScore:88, joined:'Feb 2026', trips:7,  status:'Active',   statusVariant:'green' },
-  { id:'USR-003', name:'Modern Coast Sacco',email:'ops@moderncoast.co.ke',     phone:'0711 111 222', role:'SACCO Owner', roleVariant:'blue',   trustScore:99, joined:'Oct 2025', trips:0,  status:'Active',   statusVariant:'green' },
-  { id:'USR-004', name:'Faith Njeri',       email:'faith.njeri@gmail.com',     phone:'0734 567 890', role:'Passenger',   roleVariant:'green',  trustScore:76, joined:'Mar 2026', trips:3,  status:'Active',   statusVariant:'green' },
-  { id:'USR-005', name:'Easy Coach Ltd',    email:'admin@easycoach.co.ke',     phone:'0700 222 333', role:'SACCO Owner', roleVariant:'blue',   trustScore:98, joined:'Sep 2025', trips:0,  status:'Active',   statusVariant:'green' },
-  { id:'USR-006', name:'Peter Odhiambo',    email:'peter.o@gmail.com',         phone:'0745 678 901', role:'Passenger',   roleVariant:'green',  trustScore:61, joined:'Mar 2026', trips:2,  status:'Flagged',  statusVariant:'amber' },
-  { id:'USR-007', name:'Lucy Wanjiru',      email:'lucy.w@gmail.com',          phone:'0756 789 012', role:'Passenger',   roleVariant:'green',  trustScore:82, joined:'Feb 2026', trips:5,  status:'Active',   statusVariant:'green' },
-  { id:'USR-008', name:'Samuel Mutua',      email:'s.mutua@gmail.com',         phone:'0767 890 123', role:'Passenger',   roleVariant:'green',  trustScore:45, joined:'Feb 2026', trips:1,  status:'Suspended',statusVariant:'red'   },
-  { id:'USR-009', name:'Eldoret Express',   email:'fleet@eldoretexp.co.ke',    phone:'0733 333 444', role:'SACCO Owner', roleVariant:'blue',   trustScore:96, joined:'Nov 2025', trips:0,  status:'Active',   statusVariant:'green' },
-  { id:'USR-010', name:'Brian Kimani',      email:'brian.k@gmail.com',         phone:'0778 901 234', role:'Passenger',   roleVariant:'green',  trustScore:70, joined:'Jan 2026', trips:4,  status:'Active',   statusVariant:'green' },
-];
 
 const ROLE_FILTERS = ['All', 'Passenger', 'SACCO Owner', 'Admin'];
 const STATUS_FILTERS = ['All', 'Active', 'Flagged', 'Suspended'];
 
+const roleToApi: Record<string, 'ALL' | 'USER' | 'OWNER' | 'ADMIN'> = {
+  All: 'ALL',
+  Passenger: 'USER',
+  'SACCO Owner': 'OWNER',
+  Admin: 'ADMIN',
+};
+
+const statusToApi: Record<string, 'ALL' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'> = {
+  All: 'ALL',
+  Active: 'ACTIVE',
+  Flagged: 'INACTIVE',
+  Suspended: 'SUSPENDED',
+};
+
+const roleLabel: Record<'USER' | 'OWNER' | 'ADMIN', string> = {
+  USER: 'Passenger',
+  OWNER: 'SACCO Owner',
+  ADMIN: 'Admin',
+};
+
+const roleVariant: Record<'USER' | 'OWNER' | 'ADMIN', BadgeVariant> = {
+  USER: 'green',
+  OWNER: 'blue',
+  ADMIN: 'purple',
+};
+
+const statusLabel: Record<'ACTIVE' | 'INACTIVE' | 'SUSPENDED', string> = {
+  ACTIVE: 'Active',
+  INACTIVE: 'Flagged',
+  SUSPENDED: 'Suspended',
+};
+
+const statusVariant: Record<'ACTIVE' | 'INACTIVE' | 'SUSPENDED', BadgeVariant> = {
+  ACTIVE: 'green',
+  INACTIVE: 'amber',
+  SUSPENDED: 'red',
+};
+
 export default function AdminUsers() {
+  const toast = useToast();
   const [roleFilter, setRoleFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<User[]>([]);
 
-  const visible = USERS.filter(u => {
-    const matchRole   = roleFilter === 'All'   || u.role === roleFilter;
-    const matchStatus = statusFilter === 'All' || u.status === statusFilter;
-    const q = search.toLowerCase();
-    const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-    return matchRole && matchStatus && matchSearch;
-  });
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      setLoading(true);
+      try {
+        const response = await getAdminUsersApi({
+          role: roleToApi[roleFilter],
+          status: statusToApi[statusFilter],
+          q: search.trim() || undefined,
+          limit: 300,
+        });
+
+        if (!mounted) return;
+
+        const mapped = response.data.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: roleLabel[user.role],
+          roleVariant: roleVariant[user.role],
+          trustScore: user.trustScore,
+          joined: new Date(user.createdAt).toLocaleDateString('en-KE', {
+            month: 'short',
+            year: 'numeric',
+          }),
+          trips: user.trips,
+          status: statusLabel[user.status],
+          statusVariant: statusVariant[user.status],
+        }));
+
+        setRows(mapped);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      mounted = false;
+    };
+  }, [roleFilter, statusFilter, search]);
+
+  const visible = useMemo(() => rows, [rows]);
+
+  const refresh = async () => {
+    const response = await getAdminUsersApi({
+      role: roleToApi[roleFilter],
+      status: statusToApi[statusFilter],
+      q: search.trim() || undefined,
+      limit: 300,
+    });
+    const mapped = response.data.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: roleLabel[user.role],
+      roleVariant: roleVariant[user.role],
+      trustScore: user.trustScore,
+      joined: new Date(user.createdAt).toLocaleDateString('en-KE', {
+        month: 'short',
+        year: 'numeric',
+      }),
+      trips: user.trips,
+      status: statusLabel[user.status],
+      statusVariant: statusVariant[user.status],
+    }));
+    setRows(mapped);
+  };
 
   return (
     <DashboardLayout
@@ -59,7 +161,7 @@ export default function AdminUsers() {
               onClick={() => setStatusFilter(f)}>{f}</button>
           ))}
         </div>
-        <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{visible.length} users</span>
+        <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{loading ? 'Loading...' : `${visible.length} users`}</span>
       </div>
 
       <div className="table-wrap">
@@ -96,11 +198,54 @@ export default function AdminUsers() {
                 <td><Badge variant={u.statusVariant}>{u.status}</Badge></td>
                 <td style={{ display:'flex', gap:6 }}>
                   <button className="btn btn-sm">View</button>
-                  {u.status === 'Active' && <button className="btn btn-sm" style={{ color:'var(--danger)' }}>Flag</button>}
-                  {u.status === 'Suspended' && <button className="btn btn-sm" style={{ color:'var(--brand)' }}>Restore</button>}
+                  {u.status === 'Active' && (
+                    <button
+                      className="btn btn-sm"
+                      style={{ color:'var(--danger)' }}
+                      onClick={async () => {
+                        await updateAdminUserStatusApi(u.id, { status: 'INACTIVE' });
+                        toast('User flagged', 'success');
+                        await refresh();
+                      }}
+                    >
+                      Flag
+                    </button>
+                  )}
+                  {u.status === 'Flagged' && (
+                    <button
+                      className="btn btn-sm"
+                      style={{ color:'var(--brand)' }}
+                      onClick={async () => {
+                        await updateAdminUserStatusApi(u.id, { status: 'ACTIVE' });
+                        toast('User restored', 'success');
+                        await refresh();
+                      }}
+                    >
+                      Restore
+                    </button>
+                  )}
+                  {u.status === 'Suspended' && (
+                    <button
+                      className="btn btn-sm"
+                      style={{ color:'var(--brand)' }}
+                      onClick={async () => {
+                        await updateAdminUserStatusApi(u.id, { status: 'ACTIVE' });
+                        toast('User restored', 'success');
+                        await refresh();
+                      }}
+                    >
+                      Restore
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
+            {loading && (
+              <tr><td colSpan={9} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>Loading users...</td></tr>
+            )}
+            {!loading && visible.length === 0 && (
+              <tr><td colSpan={9} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>No users match this filter.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

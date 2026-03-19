@@ -12,4 +12,9 @@ router.post("/stk-push", authenticate, stkPush);
 router.post("/mpesa-callback", mpesaCallback);
 router.get("/status/:bookingId", authenticate, paymentStatus);
 
+// Backward-compatible aliases for legacy clients
+router.post("/stkpush", authenticate, stkPush);
+router.post("/payment/stk-push", authenticate, stkPush);
+router.get("/payment/status/:bookingId", authenticate, paymentStatus);
+
 export default router;

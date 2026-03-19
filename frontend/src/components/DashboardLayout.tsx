@@ -143,7 +143,7 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
             </div>
           </div>
           <button
-            className="btn btn-ghost btn-sm btn-full"
+            className="btn btn-ghost btn-sm btn-full sidebar-signout-btn"
             style={{ color: 'rgba(255,255,255,.4)', justifyContent: 'flex-start', border: '1px solid rgba(255,255,255,.08)', marginTop: 4 }}
             onClick={handleLogout}
           >

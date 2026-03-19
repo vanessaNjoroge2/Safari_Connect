@@ -1,5 +1,6 @@
 import { prisma } from "../../config/prisma.js";
 import { initiateStkPush, parseMpesaCallback } from "./mpesa.service.js";
+import { logWarn } from "../../utils/logger.js";
 
 export const initiateBookingPayment = async (userId, payload) => {
   const { bookingId, phoneNumber } = payload;
@@ -22,14 +23,17 @@ export const initiateBookingPayment = async (userId, payload) => {
   });
 
   if (!booking) {
+    logWarn("payment.booking_not_found", { userId, bookingId });
     throw new Error("Booking not found");
   }
 
   if (booking.status === "CONFIRMED") {
+    logWarn("payment.booking_already_confirmed", { userId, bookingId });
     throw new Error("This booking is already confirmed");
   }
 
   if (booking.payment && booking.payment.status === "SUCCESS") {
+    logWarn("payment.already_paid", { userId, bookingId });
     throw new Error("Payment already completed for this booking");
   }
 
@@ -85,6 +89,10 @@ export const processMpesaCallback = async (callbackPayload) => {
   });
 
   if (!payment) {
+    logWarn("payment.callback_record_not_found", {
+      checkoutRequestId: parsed.checkoutRequestId,
+      merchantRequestId: parsed.merchantRequestId,
+    });
     throw new Error("Payment record not found for this callback");
   }
 
@@ -137,6 +145,7 @@ export const getMyPaymentStatus = async (userId, bookingId) => {
   });
 
   if (!booking) {
+    logWarn("payment.status_booking_not_found", { userId, bookingId });
     throw new Error("Booking not found");
   }
 

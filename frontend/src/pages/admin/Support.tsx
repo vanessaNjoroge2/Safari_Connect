@@ -1,50 +1,98 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Badge } from '../../components/UI';
+import { getAdminSupportApi, updateAdminTicketApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 import type { BadgeVariant } from '../../types';
 
 interface Ticket {
-  id: string; subject: string; user: string; category: string;
-  created: string; priority: string; priorityVariant: BadgeVariant;
-  status: string; statusVariant: BadgeVariant; assignedTo: string;
+  id: string;
+  subject: string;
+  user: string;
+  category: string;
+  created: string;
+  priority: string;
+  priorityVariant: BadgeVariant;
+  status: string;
+  statusVariant: BadgeVariant;
+  assignedTo: string;
 }
-
-const TICKETS: Ticket[] = [
-  { id:'TKT-001', subject:'Did not receive ticket after payment',       user:'Virginia Wamaitha', category:'Booking',  created:'18 Mar 2026 09:12', priority:'High',   priorityVariant:'red',   status:'Open',        statusVariant:'red',   assignedTo:'Sarah K.' },
-  { id:'TKT-002', subject:'Driver refused to honour booking',           user:'James Kariuki',     category:'Dispute',  created:'18 Mar 2026 08:45', priority:'High',   priorityVariant:'red',   status:'In Review',   statusVariant:'amber', assignedTo:'John M.' },
-  { id:'TKT-003', subject:'Overcharged for luggage — no receipt given', user:'Faith Njeri',       category:'Payment',  created:'17 Mar 2026 17:30', priority:'Medium', priorityVariant:'amber', status:'In Review',   statusVariant:'amber', assignedTo:'Sarah K.' },
-  { id:'TKT-004', subject:'Cannot cancel booking — 24h before trip',   user:'Brian Kimani',      category:'Booking',  created:'15 Mar 2026 14:00', priority:'Medium', priorityVariant:'amber', status:'Resolved',    statusVariant:'green', assignedTo:'John M.' },
-  { id:'TKT-005', subject:'M-Pesa deducted but no confirmation SMS',   user:'Lucy Wanjiru',      category:'Payment',  created:'15 Mar 2026 11:20', priority:'High',   priorityVariant:'red',   status:'Open',        statusVariant:'red',   assignedTo:'Unassigned' },
-  { id:'TKT-006', subject:'Wrong seat allocated on bus',                user:'Peter Odhiambo',    category:'Booking',  created:'14 Mar 2026 09:00', priority:'Low',    priorityVariant:'gray',  status:'Resolved',    statusVariant:'green', assignedTo:'Sarah K.' },
-  { id:'TKT-007', subject:'App shows wrong departure time for NBI-MBA', user:'Kevin Otieno',      category:'App Bug',  created:'14 Mar 2026 08:10', priority:'Medium', priorityVariant:'amber', status:'In Review',   statusVariant:'amber', assignedTo:'Dev Team' },
-  { id:'TKT-008', subject:'SACCO blocked me without reason',            user:'Samuel Mutua',      category:'Dispute',  created:'13 Mar 2026 16:55', priority:'High',   priorityVariant:'red',   status:'Escalated',   statusVariant:'red',   assignedTo:'Admin' },
-];
 
 const STATUS_OPTS = ['All', 'Open', 'In Review', 'Escalated', 'Resolved'];
 const CAT_OPTS = ['All', 'Booking', 'Payment', 'Dispute', 'App Bug'];
 
 export default function AdminSupport() {
+  const toast = useToast();
   const [statusF, setStatusF] = useState('All');
   const [catF, setCatF] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
 
-  const visible = TICKETS.filter(t =>
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const response = await getAdminSupportApi();
+        if (!mounted) return;
+        const mapped = response.data.map((t) => ({
+          id: t.id,
+          subject: t.subject,
+          user: t.user,
+          category: t.category,
+          created: t.created,
+          priority: t.priority,
+          priorityVariant: (t.priority === 'High' ? 'red' : t.priority === 'Medium' ? 'amber' : 'gray') as BadgeVariant,
+          status: t.status,
+          statusVariant: (t.status === 'Resolved' ? 'green' : t.status === 'Escalated' ? 'red' : 'amber') as BadgeVariant,
+          assignedTo: t.assignedTo,
+        }));
+        setTickets(mapped);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const visible = useMemo(() => tickets.filter(t =>
     (statusF === 'All' || t.status === statusF) &&
     (catF === 'All'    || t.category === catF)
-  );
+  ), [tickets, statusF, catF]);
+
+  const refresh = async () => {
+    const response = await getAdminSupportApi();
+    const mapped = response.data.map((t) => ({
+      id: t.id,
+      subject: t.subject,
+      user: t.user,
+      category: t.category,
+      created: t.created,
+      priority: t.priority,
+      priorityVariant: (t.priority === 'High' ? 'red' : t.priority === 'Medium' ? 'amber' : 'gray') as BadgeVariant,
+      status: t.status,
+      statusVariant: (t.status === 'Resolved' ? 'green' : t.status === 'Escalated' ? 'red' : 'amber') as BadgeVariant,
+      assignedTo: t.assignedTo,
+    }));
+    setTickets(mapped);
+  };
 
   return (
     <DashboardLayout
       title="Support & Disputes"
       subtitle="Passenger and operator support tickets — resolve and escalate"
-      actions={<span className="text-muted" style={{ fontSize:13 }}>{TICKETS.filter(t=>t.status==='Open').length} open tickets</span>}
+      actions={<span className="text-muted" style={{ fontSize:13 }}>{loading ? 'Loading...' : `${tickets.filter(t=>t.status==='Open').length} open tickets`}</span>}
     >
       {/* Summary */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         {[
-          { label:'Open',       value: TICKETS.filter(t=>t.status==='Open').length,       color:'var(--danger)' },
-          { label:'In Review',  value: TICKETS.filter(t=>t.status==='In Review').length,  color:'var(--warning)' },
-          { label:'Escalated',  value: TICKETS.filter(t=>t.status==='Escalated').length,  color:'#7c3aed' },
-          { label:'Resolved',   value: TICKETS.filter(t=>t.status==='Resolved').length,   color:'var(--brand)' },
+          { label:'Open',       value: tickets.filter(t=>t.status==='Open').length,       color:'var(--danger)' },
+          { label:'In Review',  value: tickets.filter(t=>t.status==='In Review').length,  color:'var(--warning)' },
+          { label:'Escalated',  value: tickets.filter(t=>t.status==='Escalated').length,  color:'#7c3aed' },
+          { label:'Resolved',   value: tickets.filter(t=>t.status==='Resolved').length,   color:'var(--brand)' },
         ].map(c => (
           <div key={c.label} className="card" style={{ padding:'18px 20px', textAlign:'center' }}>
             <div className="kpi-label">{c.label}</div>
@@ -87,13 +135,38 @@ export default function AdminSupport() {
                 <td style={{ fontSize:12, color:'var(--gray-500)' }}>{t.assignedTo}</td>
                 <td><Badge variant={t.statusVariant}>{t.status}</Badge></td>
                 <td style={{ display:'flex', gap:6 }}>
-                  <button className="btn btn-sm">Resolve</button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={async () => {
+                      await updateAdminTicketApi(t.id, { status: 'Resolved' });
+                      toast('Ticket resolved', 'success');
+                      await refresh();
+                    }}
+                  >
+                    Resolve
+                  </button>
                   {t.status !== 'Escalated' && (
-                    <button className="btn btn-sm" style={{ color:'var(--danger)' }}>Escalate</button>
+                    <button
+                      className="btn btn-sm"
+                      style={{ color:'var(--danger)' }}
+                      onClick={async () => {
+                        await updateAdminTicketApi(t.id, { status: 'Escalated' });
+                        toast('Ticket escalated', 'success');
+                        await refresh();
+                      }}
+                    >
+                      Escalate
+                    </button>
                   )}
                 </td>
               </tr>
             ))}
+            {loading && (
+              <tr><td colSpan={9} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>Loading tickets...</td></tr>
+            )}
+            {!loading && visible.length === 0 && (
+              <tr><td colSpan={9} style={{ textAlign:'center', color:'var(--gray-400)', padding:32 }}>No tickets found.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
