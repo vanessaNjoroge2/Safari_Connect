@@ -17,8 +17,9 @@ import Seat             from './pages/passenger/Seat';
 import Confirm          from './pages/passenger/Confirm';
 import Payment          from './pages/passenger/Payment';
 import Ticket           from './pages/passenger/Ticket';
-import MyBookings       from './pages/passenger/MyBookings';
-import Profile          from './pages/passenger/Profile';
+import MyBookings         from './pages/passenger/MyBookings';
+import PassengerPayments  from './pages/passenger/Payments';
+import Profile            from './pages/passenger/Profile';
 
 // Carrier pages
 import CarrierHome  from './pages/carrier/Home';
@@ -73,6 +74,7 @@ export default function App() {
               <Route path="/passenger/payment"    element={<RequireAuth role="passenger"><Payment /></RequireAuth>} />
               <Route path="/passenger/ticket"     element={<RequireAuth role="passenger"><Ticket /></RequireAuth>} />
               <Route path="/passenger/mybookings" element={<RequireAuth role="passenger"><MyBookings /></RequireAuth>} />
+              <Route path="/passenger/payments"   element={<RequireAuth role="passenger"><PassengerPayments /></RequireAuth>} />
               <Route path="/passenger/profile"    element={<RequireAuth role="passenger"><Profile /></RequireAuth>} />
 
               {/* ── Carrier (passenger access) ───────────────────────────── */}

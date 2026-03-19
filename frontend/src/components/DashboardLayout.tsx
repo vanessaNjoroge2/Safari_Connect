@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { FloatingChat } from './UI';
 import type { UserRole } from '../types';
 
 interface NavSection { section: string; }
@@ -13,6 +14,7 @@ const USER_NAV: NavItem[] = [
   { to: '/passenger/search',     label: 'Search trips',     icon: '🔍' },
   { to: '/passenger/seat',       label: 'Seat selection',   icon: '💺' },
   { to: '/passenger/mybookings', label: 'My bookings',      icon: '📂' },
+  { to: '/passenger/payments',   label: 'Payments',          icon: '💳' },
   { section: 'Other Services' },
   { to: '/carrier',              label: 'Carrier services', icon: '📦', end: true },
   { section: 'Account' },
@@ -195,6 +197,11 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
             </div>
           </div>
         </header>
+
+        {/* Floating AI Chat — passenger + admin only */}
+        {(user?.role === 'passenger' || user?.role === 'admin') && (
+          <FloatingChat role={user.role} />
+        )}
 
         {/* Body */}
         <div className="dash-body fade-in">

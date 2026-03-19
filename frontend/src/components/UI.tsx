@@ -359,3 +359,150 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
     </div>
   );
 }
+
+// ─── Floating AI Chat ─────────────────────────────────────────────────────────
+interface ChatMsg { from: 'user' | 'ai'; text: string; time: string; }
+
+const QUICK_REPLIES = [
+  'Find cheapest route to Mombasa',
+  'When is the next bus to Nakuru?',
+  'Track my booking SC-2026-00892',
+  'What is my trust score?',
+];
+
+const AI_RESPONSES: Record<string, string> = {
+  default: "I'm your SafiriConnect AI assistant. I can help you find trips, check fares, track bookings, and answer any transport questions. How can I help?",
+  mombasa: "🚌 **Nairobi → Mombasa** — Next departures:\n• 06:00 AM · Easy Coach · KES 1,500 · 14 seats left\n• 08:00 AM · Modern Coast · KES 1,800 (VIP) · 6 seats\n\n**AI Insight:** Fares are expected to rise 12% by Thursday. Book now for best price.",
+  nakuru: "🚌 **Nairobi → Nakuru** — Next bus departs in **42 minutes** (14 seats left). \nFare: KES 850. Estimated journey: 2h 10min.\n\nShall I reserve a seat for you?",
+  track: "📋 **Booking SC-2026-00892**\n• Route: Nairobi → Nakuru\n• Date: 18 Mar 2026 · Seat 14B\n• Status: **Upcoming** ✅\n• Departure: 8:00 AM from Westlands Terminus",
+  trust: "🛡️ **Your AI Trust Score: 94/100 — Excellent**\n\nBased on: 12 completed trips, zero cancellations, verified ID, positive driver ratings.\n\nTop 6% of all SafiriConnect passengers.",
+};
+
+function getAiReply(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('mombasa') || m.includes('cheapest')) return AI_RESPONSES.mombasa;
+  if (m.includes('nakuru') || m.includes('next bus')) return AI_RESPONSES.nakuru;
+  if (m.includes('track') || m.includes('booking') || m.includes('sc-')) return AI_RESPONSES.track;
+  if (m.includes('trust') || m.includes('score')) return AI_RESPONSES.trust;
+  return AI_RESPONSES.default;
+}
+
+function now() {
+  return new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'admin' }) {
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState<ChatMsg[]>([
+    { from: 'ai', text: role === 'admin'
+        ? "Hello Admin. I'm your SafiriConnect AI Platform Guardian. Ask me about fraud alerts, booking anomalies, revenue trends, or platform health."
+        : "Hi there! 👋 I'm your SafiriConnect AI travel assistant. Ask me anything — trips, fares, bookings, or your trust score.",
+      time: now() },
+  ]);
+  const [input, setInput] = useState('');
+  const [typing, setTyping] = useState(false);
+  const bottomRef = useState<HTMLDivElement | null>(null);
+
+  const send = (text: string) => {
+    if (!text.trim()) return;
+    const userMsg: ChatMsg = { from: 'user', text: text.trim(), time: now() };
+    setMsgs(m => [...m, userMsg]);
+    setInput('');
+    setTyping(true);
+    setTimeout(() => {
+      setTyping(false);
+      setMsgs(m => [...m, { from: 'ai', text: getAiReply(text), time: now() }]);
+    }, 900);
+  };
+
+  return (
+    <>
+      {/* Floating button */}
+      <button
+        className={`float-chat-btn${open ? ' open' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        title="AI Assistant"
+        aria-label="Open AI chat assistant"
+      >
+        {open ? (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        ) : (
+          <>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span className="float-chat-badge">AI</span>
+          </>
+        )}
+      </button>
+
+      {/* Chat panel */}
+      {open && (
+        <div className="float-chat-panel slide-up">
+          {/* Header */}
+          <div className="float-chat-header">
+            <div className="float-chat-avatar">🤖</div>
+            <div>
+              <div className="float-chat-name">
+                {role === 'admin' ? 'AI Platform Guardian' : 'SafiriConnect AI'}
+              </div>
+              <div className="float-chat-status">
+                <span className="float-chat-dot" /> Online · powered by AI agent
+              </div>
+            </div>
+            <button className="float-chat-close" onClick={() => setOpen(false)}>✕</button>
+          </div>
+
+          {/* Messages */}
+          <div className="float-chat-msgs">
+            {msgs.map((m, i) => (
+              <div key={i} className={`float-msg float-msg-${m.from}`}>
+                {m.from === 'ai' && <div className="float-msg-icon">🤖</div>}
+                <div className="float-msg-bubble">
+                  <div style={{ whiteSpace: 'pre-line' }}>{m.text}</div>
+                  <div className="float-msg-time">{m.time}</div>
+                </div>
+              </div>
+            ))}
+            {typing && (
+              <div className="float-msg float-msg-ai">
+                <div className="float-msg-icon">🤖</div>
+                <div className="float-msg-bubble float-typing">
+                  <span /><span /><span />
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef[1]} />
+          </div>
+
+          {/* Quick replies */}
+          {msgs.length <= 2 && (
+            <div className="float-quick-replies">
+              {QUICK_REPLIES.map(q => (
+                <button key={q} className="float-quick-btn" onClick={() => send(q)}>{q}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="float-chat-input-row">
+            <input
+              className="float-chat-input"
+              placeholder="Ask anything…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && send(input)}
+            />
+            <button className="float-chat-send" onClick={() => send(input)} disabled={!input.trim()}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
