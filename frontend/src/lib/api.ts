@@ -3,7 +3,7 @@ import type { RegisterPayload, SearchQuery, UserRole } from '../types';
 const API_BASE =
   (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ||
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
-  'http://localhost:5000';
+  'http://localhost:3215';
 
 export const AUTH_TOKEN_KEY = 'safiri_auth_token';
 
@@ -297,4 +297,95 @@ export async function getMyBookingsApi() {
 
 export async function getBookingByIdApi(bookingId: string) {
   return apiRequest<{ success: boolean; message: string; data: any }>(`/api/bookings/${bookingId}`);
+}
+
+export type AiAssistEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    language: 'en' | 'sw';
+    modules: {
+      recommendation: {
+        topPick: null | {
+          id?: string;
+          route?: string;
+          price?: number;
+          travelMinutes?: number;
+          reliabilityScore?: number;
+          score?: number;
+        };
+        confidence: number;
+      };
+      pricing: {
+        currentPrice: number;
+        predictedPrice: number;
+        confidence: number;
+        demandLevel: 'high' | 'normal' | 'unknown';
+        cheaperWindowSuggestion: string;
+      };
+      delayRisk: {
+        riskScore: number;
+        riskLevel: 'low' | 'medium' | 'high';
+        confidence: number;
+        recommendation: string;
+      };
+      fraud: {
+        fraudScore: number;
+        decision: 'allow' | 'review' | 'block';
+        confidence: number;
+      };
+      operations: {
+        occupancyRate: number;
+        riskLevel: 'low' | 'medium' | 'high';
+        action: 'hold' | 'add_vehicle' | 'enable_waitlist' | 'shift_departure';
+        dispatchAdvice: string;
+        confidence: number;
+      };
+      chat: {
+        message: string;
+      };
+    };
+    summary: {
+      topAction: string;
+      passengerMessage: string;
+    };
+  };
+};
+
+export async function aiAssistApi(payload: {
+  prompt: string;
+  language?: 'en' | 'sw';
+  route?: string;
+  departureTime?: string;
+  currentPrice?: number;
+  totalSeats?: number;
+  bookedSeats?: number;
+  noShowRate?: number;
+  riskFactors?: {
+    weatherRisk?: number;
+    trafficRisk?: number;
+    routeRisk?: number;
+  };
+  fraudSignals?: {
+    attemptsLast24h?: number;
+    cardMismatch?: boolean;
+    rapidRetries?: number;
+    geoMismatch?: boolean;
+  };
+  trips?: Array<{
+    id: string;
+    route: string;
+    price: number;
+    travelMinutes: number;
+    reliabilityScore: number;
+  }>;
+  intent?: {
+    maxBudget?: number;
+    maxTravelMinutes?: number;
+  };
+}) {
+  return apiRequest<AiAssistEnvelope>('/api/ai/assist', {
+    method: 'POST',
+    body: payload,
+  });
 }

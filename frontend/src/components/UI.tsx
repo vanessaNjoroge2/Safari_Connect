@@ -497,7 +497,7 @@ function getAiReplyByLang(msg: string, lang: ChatLang): string {
   return AI_RESPONSES_SW.default;
 }
 
-const API_BASE = (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) || (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:5000';
+const API_BASE = (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) || (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3215';
 
 async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole) {
   try {
@@ -560,13 +560,6 @@ async function fetchVoiceAudio(text: string, lang: ChatLang) {
   }
 }
 
-async function playBase64Audio(audioBase64: string, audioMimeType: string) {
-  const src = `data:${audioMimeType};base64,${audioBase64}`;
-  const audio = new Audio(src);
-  audio.preload = 'auto';
-  await audio.play();
-}
-
 function normalizeSpeechText(text: string) {
   return text
     .replace(/\*\*/g, '')
@@ -599,9 +592,12 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [aiBackendOnline, setAiBackendOnline] = useState(true);
+  const [aiSpeaking, setAiSpeaking] = useState(false);
   const lastAiIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const voicePrimedRef = useRef(false);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -652,8 +648,27 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     }
   };
 
+  const interruptAssistantSpeech = () => {
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {
+        // keep chat responsive
+      }
+      activeAudioRef.current = null;
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    activeUtteranceRef.current = null;
+    setAiSpeaking(false);
+  };
+
   const speakWithPreferredVoice = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window)) return Promise.resolve();
 
     const clean = normalizeSpeechText(text);
     if (!clean) return;
@@ -672,30 +687,71 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
       utterance.voice = preferred;
     }
 
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.resume();
-    window.speechSynthesis.speak(utterance);
+    return new Promise<void>((resolve) => {
+      utterance.onstart = () => setAiSpeaking(true);
+      utterance.onend = () => {
+        activeUtteranceRef.current = null;
+        setAiSpeaking(false);
+        resolve();
+      };
+      utterance.onerror = () => {
+        activeUtteranceRef.current = null;
+        setAiSpeaking(false);
+        resolve();
+      };
+
+      activeUtteranceRef.current = utterance;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+    });
   };
 
   const speakReply = async (replyText: string) => {
     if (!voiceEnabled) return;
 
+    interruptAssistantSpeech();
+
     const premium = await fetchVoiceAudio(replyText, lang);
     if (premium) {
       try {
-        await playBase64Audio(premium.audioBase64, premium.audioMimeType);
+        const src = `data:${premium.audioMimeType};base64,${premium.audioBase64}`;
+        const audio = new Audio(src);
+        activeAudioRef.current = audio;
+
+        await new Promise<void>((resolve) => {
+          audio.onended = () => {
+            if (activeAudioRef.current === audio) activeAudioRef.current = null;
+            setAiSpeaking(false);
+            resolve();
+          };
+          audio.onerror = () => {
+            if (activeAudioRef.current === audio) activeAudioRef.current = null;
+            setAiSpeaking(false);
+            resolve();
+          };
+
+          setAiSpeaking(true);
+          void audio.play().catch(() => {
+            if (activeAudioRef.current === audio) activeAudioRef.current = null;
+            setAiSpeaking(false);
+            resolve();
+          });
+        });
         return;
       } catch {
         // Fall through to browser TTS
       }
     }
 
-    speakWithPreferredVoice(replyText);
+    await speakWithPreferredVoice(replyText);
   };
 
   const startListening = () => {
     const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!Recognition) return;
+
+    interruptAssistantSpeech();
 
     const rec = new Recognition();
     rec.lang = lang === 'sw' ? 'sw-KE' : 'en-KE';
@@ -719,6 +775,7 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
 
   const send = async (text: string, options?: { fromVoice?: boolean }) => {
     if (!text.trim()) return;
+    interruptAssistantSpeech();
     primeVoice();
 
     const raw = text.trim();
@@ -802,6 +859,15 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
               <button className={`float-chat-tool-btn compact${voiceEnabled ? ' active' : ''}`} onClick={() => setVoiceEnabled((v) => !v)} title="Toggle voice replies">
                 {voiceEnabled ? '🔊 On' : '🔇 Off'}
               </button>
+              {aiSpeaking && (
+                <button
+                  className="float-chat-tool-btn compact"
+                  onClick={interruptAssistantSpeech}
+                  title="Interrupt assistant speech"
+                >
+                  ⏹ Stop
+                </button>
+              )}
             </div>
             <div className="float-chat-control-block stretch">
               <button
@@ -851,7 +917,12 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
               className="float-chat-input"
               placeholder="Ask anything…"
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => {
+                if (aiSpeaking && e.target.value.trim().length > 0) {
+                  interruptAssistantSpeech();
+                }
+                setInput(e.target.value);
+              }}
               onKeyDown={e => e.key === 'Enter' && send(input)}
             />
             <button className={`float-chat-tool-btn input-mic${listening ? ' active' : ''}`} onClick={startListening} title="Voice input">
