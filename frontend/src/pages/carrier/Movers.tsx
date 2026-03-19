@@ -51,7 +51,12 @@ export default function Movers() {
             <button className="btn btn-primary btn-lg" onClick={() => setStep(1)}>Next: Add inventory →</button>
           </div>
           <div>
-            <MapEmbed height={360} label="Route from pickup to new home" />
+            <MapEmbed
+              height={360}
+              label="Route from pickup to new home"
+              pickup="Ngong Road"
+              dropoff="Kilimani"
+            />
             <div className="card card-sm mt-3 text-sm text-muted">
               {elevator ? '✓ No extra floor charges.' : '⚠️ Non-ground floors without elevator may attract extra charge.'}
             </div>
@@ -156,7 +161,7 @@ export default function Movers() {
             </div>
           </div>
           <div>
-            <MapEmbed height={260} />
+            <MapEmbed height={260} pickup="Ngong Road" dropoff="Kilimani" />
             <div className="card card-sm mt-3">
               <p className="text-xs font-semibold mb-3" style={{ color:'var(--gray-400)', textTransform:'uppercase', letterSpacing:'.06em' }}>What happens next</p>
               {['Deposit payment confirms your booking','Movers team lead calls you within 2 hours','Full crew arrives on moving day at agreed time','Final payment after everything is moved in'].map((s,i) => (

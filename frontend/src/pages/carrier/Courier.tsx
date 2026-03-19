@@ -38,7 +38,12 @@ export default function DocumentCourier() {
             <button className="btn btn-primary btn-lg" onClick={() => setStep(1)}>Next →</button>
           </div>
           <div>
-            <MapEmbed height={320} label="Upper Hill → Westlands · 7.2 km" />
+            <MapEmbed
+              height={320}
+              label="Upper Hill → Westlands · 7.2 km"
+              pickup="Upper Hill"
+              dropoff="Westlands"
+            />
             <div className="card card-sm mt-3">
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}><span style={{ color:'var(--gray-400)' }}>Distance</span><strong>7.2 km</strong></div>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}><span style={{ color:'var(--gray-400)' }}>Min delivery time</span><strong style={{ color:'var(--warning)' }}>~25 min (express)</strong></div>
@@ -101,7 +106,7 @@ export default function DocumentCourier() {
             </div>
           </div>
           <div>
-            <MapEmbed height={240} />
+            <MapEmbed height={240} pickup="Upper Hill" dropoff="Westlands" />
             <div className="card card-sm mt-3">
               <p className="text-sm font-semibold mb-3">Order summary</p>
               {[['From','Upper Hill'],['To','Westlands'],['Speed',sel.label],['Signature required',signature?'Yes':'No'],['Est. price',sel.price]].map(([l,v]) => (

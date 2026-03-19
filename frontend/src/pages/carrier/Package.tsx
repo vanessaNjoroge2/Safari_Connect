@@ -53,7 +53,12 @@ export default function PackageDelivery() {
           </div>
           <div>
             <p className="text-sm font-semibold mb-2">Route preview — Nairobi CBD → Karen</p>
-            <MapEmbed height={380} label="Pickup (green) and drop-off (red) pins shown on map" />
+            <MapEmbed
+              height={380}
+              label="Pickup (green) and drop-off (red) pins shown on map"
+              pickup="Nairobi CBD"
+              dropoff="Karen"
+            />
           </div>
         </div>
       )}
@@ -158,7 +163,7 @@ export default function PackageDelivery() {
             </div>
           </div>
           <div>
-            <MapEmbed height={260} />
+            <MapEmbed height={260} pickup="Nairobi CBD" dropoff="Karen" />
             <div className="card card-sm mt-3">
               <div style={{ fontSize:11, fontWeight:600, color:'var(--gray-400)', textTransform:'uppercase', marginBottom:6 }}>AI fraud check</div>
               <div style={{ display:'flex', gap:8, alignItems:'center', fontSize:13 }}><span style={{ color:'var(--brand)', fontSize:18 }}>✓</span> Order verified · Trust score 94/100</div>

@@ -418,14 +418,97 @@ export function PieChart({ segments }: PieChartProps) {
   );
 }
 
-// ─── Map placeholder ──────────────────────────────────────────────────────────
-interface MapEmbedProps { height?: number; label?: string; }
-export function MapEmbed({ height = 380, label = 'Interactive map loads here' }: MapEmbedProps) {
+// ─── Map embed (OpenStreetMap) ───────────────────────────────────────────────
+interface MapEmbedProps {
+  height?: number;
+  label?: string;
+  pickup?: string;
+  dropoff?: string;
+}
+
+const LOCATION_COORDS: Record<string, { lat: number; lon: number; label: string }> = {
+  nairobi: { lat: -1.286389, lon: 36.817223, label: 'Nairobi CBD' },
+  karen: { lat: -1.319, lon: 36.707, label: 'Karen' },
+  'upper hill': { lat: -1.298, lon: 36.812, label: 'Upper Hill' },
+  westlands: { lat: -1.267, lon: 36.81, label: 'Westlands' },
+  kilimani: { lat: -1.2921, lon: 36.7836, label: 'Kilimani' },
+  nakuru: { lat: -0.3031, lon: 36.08, label: 'Nakuru' },
+  mombasa: { lat: -4.0435, lon: 39.6682, label: 'Mombasa' },
+  kisumu: { lat: -0.1022, lon: 34.7617, label: 'Kisumu' },
+  eldoret: { lat: 0.5143, lon: 35.2698, label: 'Eldoret' },
+  thika: { lat: -1.0332, lon: 37.0692, label: 'Thika' },
+  'ngong road': { lat: -1.3018, lon: 36.7849, label: 'Ngong Road' },
+};
+
+function resolveLocation(text?: string | null) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  for (const [key, value] of Object.entries(LOCATION_COORDS)) {
+    if (lower.includes(key)) return value;
+  }
+  return null;
+}
+
+function inferRouteFromLabel(label?: string) {
+  if (!label) return { pickup: null as ReturnType<typeof resolveLocation>, dropoff: null as ReturnType<typeof resolveLocation> };
+  const cleaned = label.split('·')[0];
+  const parts = cleaned.split('→').map((p) => p.trim());
+  if (parts.length !== 2) return { pickup: null as ReturnType<typeof resolveLocation>, dropoff: null as ReturnType<typeof resolveLocation> };
+  return {
+    pickup: resolveLocation(parts[0]),
+    dropoff: resolveLocation(parts[1]),
+  };
+}
+
+export function MapEmbed({
+  height = 380,
+  label = 'Interactive map preview',
+  pickup,
+  dropoff,
+}: MapEmbedProps) {
+  const inferred = inferRouteFromLabel(label);
+  const pickupPoint = resolveLocation(pickup) || inferred.pickup;
+  const dropoffPoint = resolveLocation(dropoff) || inferred.dropoff;
+
+  const center = pickupPoint && dropoffPoint
+    ? {
+        lat: (pickupPoint.lat + dropoffPoint.lat) / 2,
+        lon: (pickupPoint.lon + dropoffPoint.lon) / 2,
+      }
+    : pickupPoint || dropoffPoint || LOCATION_COORDS.nairobi;
+
+  const latSpan = pickupPoint && dropoffPoint ? Math.max(0.03, Math.abs(pickupPoint.lat - dropoffPoint.lat) + 0.04) : 0.08;
+  const lonSpan = pickupPoint && dropoffPoint ? Math.max(0.03, Math.abs(pickupPoint.lon - dropoffPoint.lon) + 0.05) : 0.1;
+
+  const minLon = center.lon - lonSpan;
+  const minLat = center.lat - latSpan;
+  const maxLon = center.lon + lonSpan;
+  const maxLat = center.lat + latSpan;
+
+  const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${minLon}%2C${minLat}%2C${maxLon}%2C${maxLat}&layer=mapnik&marker=${center.lat}%2C${center.lon}`;
+  const openUrl = `https://www.openstreetmap.org/?mlat=${center.lat}&mlon=${center.lon}#map=12/${center.lat}/${center.lon}`;
+
   return (
     <div className="map-embed" style={{ height }}>
-      <span style={{ fontSize: 40 }}>🗺️</span>
-      <span style={{ fontWeight: 600, fontSize: 14 }}>{label}</span>
-      <span style={{ fontSize: 12 }}>Leaflet + OpenStreetMap · No API key needed</span>
+      <iframe
+        className="map-embed-frame"
+        title="SafiriConnect map"
+        src={embedUrl}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
+      <div className="map-embed-overlay">
+        <div className="map-embed-chip">Live map · OpenStreetMap</div>
+        {(pickupPoint || dropoffPoint) && (
+          <div className="map-embed-points">
+            {pickupPoint && <span className="map-embed-point pickup">Pickup: {pickupPoint.label}</span>}
+            {dropoffPoint && <span className="map-embed-point dropoff">Drop-off: {dropoffPoint.label}</span>}
+          </div>
+        )}
+      </div>
+      <a className="map-embed-link" href={openUrl} target="_blank" rel="noreferrer">
+        Open full map ↗
+      </a>
     </div>
   );
 }

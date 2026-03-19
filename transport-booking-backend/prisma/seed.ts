@@ -812,6 +812,31 @@ async function main() {
     });
   }
 
+  // 10. Backfill AI analysis fields for any legacy records seeded before aiAnalysis existed
+  await prisma.trip.updateMany({
+    where: { aiAnalysis: null },
+    data: {
+      aiAnalysis:
+        "AI trip analysis: baseline journey intelligence prepared for pricing, delay, and occupancy monitoring.",
+    },
+  });
+
+  await prisma.booking.updateMany({
+    where: { aiAnalysis: null },
+    data: {
+      aiAnalysis:
+        "AI booking analysis: lifecycle state recorded for trust, fraud, and payment progression checks.",
+    },
+  });
+
+  await prisma.payment.updateMany({
+    where: { aiAnalysis: null },
+    data: {
+      aiAnalysis:
+        "AI payment analysis: transaction state captured for anomaly scoring and confirmation workflow.",
+    },
+  });
+
   console.log("✅ Seed completed successfully");
   console.log(`Categories: ${await prisma.category.count()}`);
   console.log(`Users: ${await prisma.user.count()}`);

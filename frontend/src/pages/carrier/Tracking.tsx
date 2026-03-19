@@ -46,7 +46,12 @@ export default function LiveTracking() {
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,2fr) minmax(0,1fr)', gap:18 }}>
         {/* Map */}
         <div>
-          <MapEmbed height={460} label="Driver position updates every 4 seconds in production" />
+          <MapEmbed
+            height={460}
+            label="Driver position updates every 4 seconds in production"
+            pickup="Nairobi CBD"
+            dropoff="Karen"
+          />
           <p className="text-xs text-muted mt-2">🟢 Pickup · 🔴 Drop-off · 🟡 Driver (live GPS)</p>
         </div>
 
