@@ -14,8 +14,16 @@ const ROLE_HOME: Record<UserRole, string> = {
 };
 
 export default function RequireAuth({ role, children }: RequireAuthProps) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--gray-500)', fontSize: 14 }}>
+        Restoring your session...
+      </div>
+    );
+  }
 
   if (!user) {
     const loginPath = role ? `/auth/login?role=${role}` : '/auth/login?role=passenger';

@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { AiBanner, Badge } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
@@ -8,13 +9,24 @@ const CLASS_LABEL: Record<string, string> = { economy:'Economy', business:'Busin
 
 export default function Results() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { booking, selectBus } = useBooking();
   const buses = booking.searchResults;
+  const autoDoneRef = useRef(false);
 
   const handleSelect = (bus: BusResult) => {
     selectBus(bus);
     navigate('/passenger/seat');
   };
+
+  useEffect(() => {
+    if (autoDoneRef.current) return;
+    if (params.get('auto') !== '1') return;
+    if (buses.length === 0) return;
+
+    autoDoneRef.current = true;
+    handleSelect(buses[0]);
+  }, [buses, params]);
 
   return (
     <DashboardLayout

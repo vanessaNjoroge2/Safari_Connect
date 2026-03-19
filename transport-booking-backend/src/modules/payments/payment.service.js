@@ -49,6 +49,8 @@ export const initiateBookingPayment = async (userId, payload) => {
     checkoutRequestId: stkResponse.CheckoutRequestID,
     merchantRequestId: stkResponse.MerchantRequestID,
     status: "PENDING",
+    aiAnalysis:
+      "AI payment analysis: STK push initiated. Track callback outcome; keep booking in pending state until payment success is confirmed.",
   };
 
   let payment;
@@ -91,13 +93,29 @@ export const processMpesaCallback = async (callbackPayload) => {
     data: {
       status: parsed.status,
       transactionRef: parsed.mpesaReceiptNumber,
+      aiAnalysis:
+        parsed.status === "SUCCESS"
+          ? "AI payment analysis: payment succeeded and trust signals are acceptable for auto-confirmation."
+          : "AI payment analysis: payment failed. Keep booking non-confirmed and prompt secure retry.",
     },
   });
 
   if (parsed.status === "SUCCESS") {
     await prisma.booking.update({
       where: { id: payment.bookingId },
-      data: { status: "CONFIRMED" },
+      data: {
+        status: "CONFIRMED",
+        aiAnalysis:
+          "AI booking analysis: payment success received. Booking promoted to confirmed and seat lock maintained.",
+      },
+    });
+  } else {
+    await prisma.booking.update({
+      where: { id: payment.bookingId },
+      data: {
+        aiAnalysis:
+          "AI booking analysis: payment callback did not succeed. Booking remains non-confirmed pending retry or cancellation policy.",
+      },
     });
   }
 

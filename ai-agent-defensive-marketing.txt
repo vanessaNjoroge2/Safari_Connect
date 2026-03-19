@@ -31,3 +31,64 @@ Executive Positioning Statement
 SafiriConnect AI Agent is not just a feature. It is a defensible operating system for transport intelligence: it increases revenue quality, lowers fraud exposure, improves service reliability, and gives teams a controlled path from assisted decisions to trusted autonomy.
 
 Use this narrative in investor, partner, and enterprise sales contexts when explaining why SafiriConnect can scale responsibly while competitors are still choosing between growth and control.
+
+LIVE DEMONSTRATION SCRIPT (AUDIENCE WALKTHROUGH)
+
+Demo Objective
+Show one connected story from trip discovery to booking/payment risk handling, then end with executive-level AI orchestration.
+
+Pre-Demo Setup
+- Confirm backend API is running.
+- Confirm AI agent service is running.
+- Confirm seeded demo records exist in database.
+- Use seeded login credentials and deterministic booking references.
+
+Suggested Storyline (8-12 minutes)
+
+Step 1: Recommendation Decision (Audience sees smarter search)
+- Prompt: "I need Nairobi to Nakuru tomorrow, best value option."
+- Show: ranked options by price, travel time, reliability.
+- Narration: "We do not return random options. We return explainable ranking and a top recommendation."
+
+Step 2: Dynamic Pricing Insight (Audience sees margin protection)
+- Show: current fare vs predicted fare and cheaper-window suggestion.
+- Narration: "This protects both conversion and margin by avoiding static pricing mistakes."
+
+Step 3: Delay Risk Prediction (Audience sees service reliability)
+- Show: risk score, risk level, and operational guidance.
+- Narration: "AI flags risk before passengers are impacted, enabling proactive comms and dispatch changes."
+
+Step 4: Fraud/Anomaly Scoring (Audience sees trust control)
+- Show seeded scenarios:
+	- DEMO-BOOK-ALLOW-001 (confirmed + successful payment)
+	- DEMO-BOOK-REVIEW-002 (pending + failed payment)
+	- DEMO-BOOK-BLOCK-003 (cancelled + failed payment)
+- Narration: "AI separates normal, review, and high-risk behavior so teams can scale safely."
+
+Step 5: Chat Assistant (Audience sees guided decisions)
+- Prompt in chat: route choice, booking question, trust-score question.
+- Show: concise, contextual response.
+- Narration: "This reduces abandonment by answering high-intent questions in real time."
+
+Step 6: Voice Assistant (English + Swahili)
+- Demo English prompt then Swahili prompt.
+- Show bilingual response and TTS readiness.
+- Narration: "Bilingual voice support removes friction and improves accessibility for local users."
+
+Step 7: Operations Dispatch Planner (Audience sees logistics intelligence)
+- Show occupancy pressure and recommended action:
+	add standby vehicle, enable waitlist, or shift departure.
+- Narration: "Dispatch becomes predictive, not reactive, which protects revenue and customer trust."
+
+Step 8: Unified Decision Assist (Executive moment)
+- Show one consolidated response combining recommendation, pricing, risk, fraud, and passenger messaging.
+- Narration: "This is the control tower view: one AI decision layer coordinating commercial, risk, and operational actions."
+
+Close With Business Outcome
+- Revenue quality improves (better pricing + fewer lost seats).
+- Fraud exposure drops (allow/review/block controls).
+- Reliability improves (delay and dispatch foresight).
+- Customer confidence improves (chat + voice clarity).
+
+Final Audience Line
+"SafiriConnect AI Agent is how we scale transport operations without trading off growth, control, or trust."

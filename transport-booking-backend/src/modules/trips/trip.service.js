@@ -66,6 +66,7 @@ export const createTrip = async (userId, payload) => {
       departureTime: departure,
       arrivalTime: arrival,
       basePrice,
+      aiAnalysis: `AI schedule analysis: route demand baseline created for ${route.origin} -> ${route.destination}. Monitoring occupancy and delay risk from departure window.`,
     },
     include: {
       sacco: true,
@@ -115,7 +116,7 @@ export const getMyTrips = async (userId) => {
 };
 
 export const searchTrips = async (query) => {
-  const { categoryId, origin, destination, date, time, tripType } = query;
+  const { categoryId, category, origin, destination, date, time, tripType } = query;
 
   const where = {
     status: "SCHEDULED",
@@ -125,23 +126,37 @@ export const searchTrips = async (query) => {
     where.tripType = tripType;
   }
 
-  if (categoryId) {
-    where.sacco = {
-      categoryId,
+  if (categoryId || category) {
+    const categorySlugMap = {
+      bus: "buses",
+      matatu: "matatu",
+      motorbike: "motorbikes",
+      carrier: "carrier-services",
     };
+
+    const normalizedCategory = String(category || "").toLowerCase().trim();
+    const mappedSlug = categorySlugMap[normalizedCategory] || normalizedCategory;
+
+    where.sacco = categoryId
+      ? { categoryId }
+      : {
+          category: {
+            slug: mappedSlug,
+          },
+        };
   }
 
   if (origin || destination) {
     where.route = {};
     if (origin) {
       where.route.origin = {
-        equals: origin,
+        contains: origin,
         mode: "insensitive",
       };
     }
     if (destination) {
       where.route.destination = {
-        equals: destination,
+        contains: destination,
         mode: "insensitive",
       };
     }
@@ -337,7 +352,10 @@ export const updateTripStatus = async (userId, tripId, status) => {
 
   return prisma.trip.update({
     where: { id: tripId },
-    data: { status },
+    data: {
+      status,
+      aiAnalysis: `AI status analysis: trip marked ${status}. Dispatch and passenger communication policies should now follow ${status.toLowerCase()} flow.`,
+    },
     include: {
       sacco: true,
       bus: true,

@@ -19,6 +19,18 @@ interface AuthContextValue {
   logout: () => void;
 }
 
+const fallbackAuthContext: AuthContextValue = {
+  user: null,
+  isLoading: false,
+  login: async () => {
+    throw new Error('Auth provider unavailable');
+  },
+  register: async () => {
+    throw new Error('Auth provider unavailable');
+  },
+  logout: () => {},
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function toFrontendRole(role: string): UserRole {
@@ -108,6 +120,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  return ctx ?? fallbackAuthContext;
 }

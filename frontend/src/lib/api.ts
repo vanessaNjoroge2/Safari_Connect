@@ -158,6 +158,7 @@ function toBackendTripType(tripType: SearchQuery['tripType']) {
 
 export async function searchTripsApi(query: SearchQuery) {
   const params = new URLSearchParams();
+  params.set('category', query.category);
   params.set('origin', query.from);
   params.set('destination', query.to);
   params.set('date', query.date);
@@ -276,6 +277,7 @@ export type MyBookingsEnvelope = {
     id: string;
     bookingCode: string;
     status: string;
+    aiAnalysis?: string | null;
     amount: number;
     createdAt: string;
     seat: { seatNumber: string; seatClass: 'VIP' | 'FIRST_CLASS' | 'BUSINESS' };
@@ -287,6 +289,7 @@ export type MyBookingsEnvelope = {
     payment: null | {
       status: string;
       transactionRef: string | null;
+      aiAnalysis?: string | null;
     };
   }>;
 };

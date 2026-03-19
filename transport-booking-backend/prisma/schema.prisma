@@ -176,6 +176,7 @@ model Trip {
   departureTime  DateTime
   arrivalTime    DateTime
   basePrice      Decimal     @db.Decimal(10, 2)
+  aiAnalysis     String?
   status         TripStatus  @default(SCHEDULED)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -205,6 +206,7 @@ model Booking {
   nationalId      String
   residence       String?
   amount          Decimal        @db.Decimal(10, 2)
+  aiAnalysis      String?
   status          BookingStatus  @default(PENDING)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -230,6 +232,7 @@ model Payment {
   transactionRef     String?        @unique
   checkoutRequestId  String?        @unique
   merchantRequestId  String?        @unique
+  aiAnalysis         String?
   status             PaymentStatus  @default(PENDING)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt

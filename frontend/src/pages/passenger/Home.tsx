@@ -66,7 +66,10 @@ export default function PassengerHome() {
             detail: 'Ranked #1 of 4 trips — lowest fare, highest reliability score. 14 seats remaining.',
             confidence: 94,
             actionLabel: 'Book this trip',
-            onAction: () => navigate('/passenger/search'),
+            onAction: () =>
+              navigate(
+                '/passenger/search?cat=bus&from=Nairobi&to=Nakuru&auto=1'
+              ),
             accentColor: 'var(--brand)',
           },
           {

@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useBooking } from '../../context/BookingContext';
@@ -25,12 +25,14 @@ export default function Search() {
   const { setSearch, setSearchResults } = useBooking();
   const toast = useToast();
   const [isSearching, setIsSearching] = useState(false);
+  const autoTriggeredRef = useRef(false);
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const [form, setForm] = useState<SearchQuery>({
     category:   (params.get('cat') ?? 'bus') as Category,
     from:       params.get('from') ?? '',
     to:         params.get('to') ?? '',
-    date:       new Date().toISOString().split('T')[0],
+    date:       params.get('date') ?? tomorrow,
     time:       '08:00',
     tripType:   'one-way',
     returnDate: '',
@@ -78,7 +80,8 @@ export default function Search() {
 
       setSearch(form);
       setSearchResults(mapped);
-      navigate('/passenger/results');
+      const autoMode = params.get('auto') === '1';
+      navigate(autoMode ? '/passenger/results?auto=1' : '/passenger/results');
     } catch (error) {
       toast((error as Error).message || 'Unable to fetch trips right now', 'error');
     } finally {
@@ -91,6 +94,48 @@ export default function Search() {
     { id: 'matatu',    icon: '🚐', label: 'Matatu' },
     { id: 'motorbike', icon: '🏍️', label: 'Motorbike' },
   ];
+
+  useEffect(() => {
+    if (autoTriggeredRef.current) return;
+
+    const auto = params.get('auto') === '1';
+    if (!auto) return;
+    if (!form.from || !form.to || !form.date) return;
+
+    autoTriggeredRef.current = true;
+    const run = async () => {
+      setIsSearching(true);
+      try {
+        const result = await searchTripsApi(form);
+        const mapped = result.data.map((trip, idx) => ({
+          id: trip.id,
+          busId: trip.bus.id,
+          routeId: trip.route.id,
+          saccoName: trip.sacco.name,
+          plateInfo: `${trip.bus.plateNumber} · ${trip.bus.seatCapacity} seats`,
+          rating: 4.6,
+          departureTime: new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+          arrivalTime: new Date(trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+          duration: trip.duration,
+          price: Number(trip.basePrice),
+          priceLabel: 'Live fare',
+          seatsLeft: trip.availableSeatsCount,
+          classes: toFrontendSeatClass(trip.seatClasses),
+          highlighted: idx === 0,
+        }));
+
+        setSearch(form);
+        setSearchResults(mapped);
+        navigate('/passenger/results?auto=1');
+      } catch (error) {
+        toast((error as Error).message || 'Unable to fetch trips right now', 'error');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    void run();
+  }, [form, navigate, params, setSearch, setSearchResults, toast]);
 
   return (
     <DashboardLayout title="Search trips" subtitle="Find available transport on your route">

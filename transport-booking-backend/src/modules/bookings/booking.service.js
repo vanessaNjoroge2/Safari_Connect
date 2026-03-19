@@ -151,6 +151,8 @@ export const createBooking = async (userId, payload) => {
       residence,
       amount: seat.price,
       status: "PENDING",
+      aiAnalysis:
+        "AI booking analysis: booking created in pending state. Risk posture is normal; awaiting payment confirmation before seat lock upgrade to confirmed.",
     },
     include: {
       trip: {

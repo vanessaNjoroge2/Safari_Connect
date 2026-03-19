@@ -11,6 +11,7 @@ interface PayRow {
   date: string; method: string; amount: string;
   status: string; variant: BadgeVariant;
   mpesaCode: string;
+  aiAnalysis: string;
 }
 
 function mapPaymentStatus(status: string): { text: string; variant: BadgeVariant } {
@@ -46,6 +47,10 @@ export default function PassengerPayments() {
             status: pay.text,
             variant: pay.variant,
             mpesaCode: b.payment?.transactionRef || '—',
+            aiAnalysis:
+              b.payment?.aiAnalysis ||
+              b.aiAnalysis ||
+              'AI analysis pending for this payment event.',
           };
         });
 
@@ -106,6 +111,7 @@ export default function PassengerPayments() {
               <th>Method</th>
               <th>M-Pesa code</th>
               <th>Amount</th>
+              <th>AI analysis</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -127,6 +133,7 @@ export default function PassengerPayments() {
                 </td>
                 <td style={{ fontFamily:'monospace', fontSize:12, letterSpacing:'.5px' }}>{p.mpesaCode}</td>
                 <td style={{ fontWeight:700 }}>{p.amount}</td>
+                <td style={{ maxWidth: 280, fontSize: 12.5, color: 'var(--gray-600)' }}>{p.aiAnalysis}</td>
                 <td><Badge variant={p.variant}>{p.status}</Badge></td>
               </tr>
             ))}

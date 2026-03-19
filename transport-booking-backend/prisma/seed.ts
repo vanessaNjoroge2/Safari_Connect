@@ -90,6 +90,14 @@ function buildSeatsForCapacity(capacity: number) {
   return seats;
 }
 
+function startOfFutureDay(daysAhead: number, hour: number, minute = 0) {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setDate(d.getDate() + daysAhead);
+  d.setHours(hour, minute, 0, 0);
+  return d;
+}
+
 async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
@@ -196,6 +204,10 @@ async function main() {
     where: { slug: "buses" },
   });
 
+  const matatuCategory = await prisma.category.findUniqueOrThrow({
+    where: { slug: "matatu" },
+  });
+
   // 2. Admin
   await upsertUser({
     firstName: "System",
@@ -242,6 +254,17 @@ async function main() {
       saccoName: "City Link",
       supportPhone: "254744444444",
       supportEmail: "support@citylink.com",
+      categorySlug: "buses",
+    },
+    {
+      firstName: "Ben",
+      lastName: "Maina",
+      email: "owner5@transport.com",
+      phone: "254700000015",
+      saccoName: "Metro Matatu Line",
+      supportPhone: "254755555555",
+      supportEmail: "support@metromatatu.co.ke",
+      categorySlug: "matatu",
     },
   ];
 
@@ -277,7 +300,10 @@ async function main() {
       (await prisma.sacco.create({
         data: {
           ownerProfileId: ownerProfile.id,
-          categoryId: busCategory.id,
+          categoryId:
+            ownerData.categorySlug === "matatu"
+              ? matatuCategory.id
+              : busCategory.id,
           name: ownerData.saccoName,
           slug: saccoSlug,
           supportPhone: ownerData.supportPhone,
@@ -408,6 +434,7 @@ async function main() {
             departureTime,
             arrivalTime,
             basePrice: new Prisma.Decimal(randomFrom([1500, 1800, 2000, 2500])),
+            aiAnalysis: `AI trip analysis: seeded demand profile for ${route.origin} -> ${route.destination}; monitor occupancy and delay risk before departure.`,
             status:
               departureTime < new Date()
                 ? randomFrom<TripStatus[]>(["COMPLETED", "COMPLETED", "SCHEDULED"])
@@ -458,6 +485,12 @@ async function main() {
           nationalId: `${randomInt(10000000, 39999999)}`,
           residence: randomFrom(["Nairobi", "Thika", "Mombasa", "Kisumu", "Nakuru"]),
           amount: seat.price,
+          aiAnalysis:
+            bookingStatus === "CONFIRMED"
+              ? "AI booking analysis: payment likely healthy; booking can remain confirmed unless later anomaly detected."
+              : bookingStatus === "PENDING"
+                ? "AI booking analysis: awaiting payment confirmation; keep seat locked temporarily and monitor timeout."
+                : "AI booking analysis: booking cancelled; release seat inventory and audit cancellation pattern.",
           status: bookingStatus,
         },
       });
@@ -478,11 +511,305 @@ async function main() {
             transactionRef: paymentStatus === "SUCCESS" ? uniqueMpesaRef() : null,
             checkoutRequestId: uniqueId("ws_CO"),
             merchantRequestId: uniqueId("MR"),
+            aiAnalysis:
+              paymentStatus === "SUCCESS"
+                ? "AI payment analysis: successful mobile money confirmation; trust risk low."
+                : paymentStatus === "FAILED"
+                  ? "AI payment analysis: failed payment event; prompt retry and risk-check repeated failures."
+                  : "AI payment analysis: pending callback from payment provider.",
             status: paymentStatus,
           },
         });
       }
     }
+  }
+
+  // 9. Deterministic demo scenarios for full walkthroughs (idempotent)
+  const demoRoute = await getOrCreateRoute("Nairobi (Demo Hub)", "Nakuru (Demo Hub)", 160, 180);
+  const demoSacco = saccos[0];
+  const matatuSacco = saccos.find((s) => s.slug === slugify("Metro Matatu Line"));
+
+  let demoBus = await prisma.bus.findUnique({
+    where: { plateNumber: "KDM 900D" },
+  });
+
+  if (!demoBus) {
+    demoBus = await prisma.bus.create({
+      data: {
+        saccoId: demoSacco.id,
+        name: "Safari Express Demo Bus",
+        plateNumber: "KDM 900D",
+        seatCapacity: 24,
+        isActive: true,
+      },
+    });
+  }
+
+  const demoBusSeats = await prisma.seat.findMany({
+    where: { busId: demoBus.id },
+    orderBy: { seatNumber: "asc" },
+  });
+
+  if (demoBusSeats.length === 0) {
+    const seats = buildSeatsForCapacity(24);
+    await prisma.seat.createMany({
+      data: seats.map((seat) => ({
+        busId: demoBus!.id,
+        seatNumber: seat.seatNumber,
+        seatClass: seat.seatClass,
+        price: seat.price,
+      })),
+    });
+  }
+
+  const refreshedDemoSeats = await prisma.seat.findMany({
+    where: { busId: demoBus.id },
+    orderBy: { seatNumber: "asc" },
+  });
+
+  const demoTripsSeed = [
+    {
+      code: "TRIP-DEMO-RECO",
+      departureTime: startOfFutureDay(1, 6),
+      arrivalTime: startOfFutureDay(1, 9),
+      basePrice: new Prisma.Decimal(1500),
+      status: "SCHEDULED" as TripStatus,
+    },
+    {
+      code: "TRIP-DEMO-PRICE",
+      departureTime: startOfFutureDay(1, 18),
+      arrivalTime: startOfFutureDay(1, 21),
+      basePrice: new Prisma.Decimal(1800),
+      status: "SCHEDULED" as TripStatus,
+    },
+    {
+      code: "TRIP-DEMO-RISK",
+      departureTime: startOfFutureDay(2, 5),
+      arrivalTime: startOfFutureDay(2, 8),
+      basePrice: new Prisma.Decimal(2100),
+      status: "SCHEDULED" as TripStatus,
+    },
+  ];
+
+  const demoTrips: Record<string, Awaited<ReturnType<typeof prisma.trip.create>>> = {};
+  for (const t of demoTripsSeed) {
+    const existing = await prisma.trip.findFirst({
+      where: {
+        busId: demoBus.id,
+        routeId: demoRoute.id,
+        departureTime: t.departureTime,
+      },
+    });
+
+    const trip =
+      existing ??
+      (await prisma.trip.create({
+        data: {
+          saccoId: demoSacco.id,
+          busId: demoBus.id,
+          routeId: demoRoute.id,
+          tripType: "ONE_WAY",
+          departureTime: t.departureTime,
+          arrivalTime: t.arrivalTime,
+          basePrice: t.basePrice,
+          aiAnalysis: `AI demo analysis: ${t.code} prepared for recommendation, pricing, and delay-risk showcase.`,
+          status: t.status,
+        },
+      }));
+
+    demoTrips[t.code] = trip;
+  }
+
+  // Deterministic matatu demo trip for category-specific search demos
+  if (matatuSacco) {
+    let matatuBus = await prisma.bus.findUnique({
+      where: { plateNumber: "KMT 101M" },
+    });
+
+    if (!matatuBus) {
+      matatuBus = await prisma.bus.create({
+        data: {
+          saccoId: matatuSacco.id,
+          name: "Metro Matatu Demo Van",
+          plateNumber: "KMT 101M",
+          seatCapacity: 14,
+          isActive: true,
+        },
+      });
+    }
+
+    const matatuSeats = await prisma.seat.findMany({ where: { busId: matatuBus.id } });
+    if (matatuSeats.length === 0) {
+      const seats = buildSeatsForCapacity(14);
+      await prisma.seat.createMany({
+        data: seats.map((seat) => ({
+          busId: matatuBus!.id,
+          seatNumber: seat.seatNumber,
+          seatClass: seat.seatClass,
+          price: new Prisma.Decimal(750),
+        })),
+      });
+    }
+
+    const matatuDemoDeparture = startOfFutureDay(1, 7);
+    const existingMatatuDemoTrip = await prisma.trip.findFirst({
+      where: {
+        saccoId: matatuSacco.id,
+        busId: matatuBus.id,
+        routeId: routes.find((r) => r.origin === "Nairobi" && r.destination === "Nakuru")?.id,
+        departureTime: matatuDemoDeparture,
+      },
+    });
+
+    const nairobiNakuru = routes.find((r) => r.origin === "Nairobi" && r.destination === "Nakuru");
+    if (nairobiNakuru && !existingMatatuDemoTrip) {
+      await prisma.trip.create({
+        data: {
+          saccoId: matatuSacco.id,
+          busId: matatuBus.id,
+          routeId: nairobiNakuru.id,
+          tripType: "ONE_WAY",
+          departureTime: matatuDemoDeparture,
+          arrivalTime: addMinutes(matatuDemoDeparture, nairobiNakuru.estimatedTime || 180),
+          basePrice: new Prisma.Decimal(750),
+          aiAnalysis:
+            "AI demo analysis: dedicated matatu scenario for route-level recommendation and demand showcases.",
+          status: "SCHEDULED",
+        },
+      });
+    }
+  }
+
+  const demoPassengers = {
+    normal: passengers.find((p) => p.email === "clifford@example.com") || passengers[0],
+    review: passengers.find((p) => p.email === "faith@example.com") || passengers[1],
+    blocked: passengers.find((p) => p.email === "brian@example.com") || passengers[2],
+  };
+
+  const seatByNumber = (seatNumber: string) => {
+    const seat = refreshedDemoSeats.find((s) => s.seatNumber === seatNumber);
+    if (!seat) throw new Error(`Expected demo seat ${seatNumber} not found`);
+    return seat;
+  };
+
+  const demoBookingsSeed: Array<{
+    bookingCode: string;
+    userId: string;
+    tripCode: string;
+    seatNumber: string;
+    status: BookingStatus;
+    paymentStatus: PaymentStatus;
+    nationalId: string;
+    residence: string;
+  }> = [
+    {
+      bookingCode: "DEMO-BOOK-ALLOW-001",
+      userId: demoPassengers.normal.id,
+      tripCode: "TRIP-DEMO-RECO",
+      seatNumber: "A1",
+      status: "CONFIRMED",
+      paymentStatus: "SUCCESS",
+      nationalId: "30010001",
+      residence: "Nairobi",
+    },
+    {
+      bookingCode: "DEMO-BOOK-REVIEW-002",
+      userId: demoPassengers.review.id,
+      tripCode: "TRIP-DEMO-PRICE",
+      seatNumber: "A2",
+      status: "PENDING",
+      paymentStatus: "FAILED",
+      nationalId: "30010002",
+      residence: "Nakuru",
+    },
+    {
+      bookingCode: "DEMO-BOOK-BLOCK-003",
+      userId: demoPassengers.blocked.id,
+      tripCode: "TRIP-DEMO-RISK",
+      seatNumber: "A3",
+      status: "CANCELLED",
+      paymentStatus: "FAILED",
+      nationalId: "30010003",
+      residence: "Kisumu",
+    },
+  ];
+
+  for (const demo of demoBookingsSeed) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: demo.userId } });
+    const seat = seatByNumber(demo.seatNumber);
+    const trip = demoTrips[demo.tripCode];
+
+    const booking = await prisma.booking.upsert({
+      where: { bookingCode: demo.bookingCode },
+      update: {
+        status: demo.status,
+        tripId: trip.id,
+        seatId: seat.id,
+        amount: seat.price,
+        aiAnalysis:
+          demo.status === "CONFIRMED"
+            ? "AI demo analysis: allow scenario passed, booking confirmed after trusted payment."
+            : demo.status === "PENDING"
+              ? "AI demo analysis: review scenario detected, hold booking in pending while payment risk is re-checked."
+              : "AI demo analysis: block scenario triggered; booking cancelled to protect platform trust.",
+      },
+      create: {
+        userId: user.id,
+        tripId: trip.id,
+        seatId: seat.id,
+        bookingCode: demo.bookingCode,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone || "254700000000",
+        nationalId: demo.nationalId,
+        residence: demo.residence,
+        amount: seat.price,
+        aiAnalysis:
+          demo.status === "CONFIRMED"
+            ? "AI demo analysis: allow scenario passed, booking confirmed after trusted payment."
+            : demo.status === "PENDING"
+              ? "AI demo analysis: review scenario detected, hold booking in pending while payment risk is re-checked."
+              : "AI demo analysis: block scenario triggered; booking cancelled to protect platform trust.",
+        status: demo.status,
+      },
+    });
+
+    const transactionRef =
+      demo.paymentStatus === "SUCCESS" ? `DEMO-MPESA-${demo.bookingCode}` : null;
+    const checkoutRequestId = `DEMO-CO-${demo.bookingCode}`;
+    const merchantRequestId = `DEMO-MR-${demo.bookingCode}`;
+
+    await prisma.payment.upsert({
+      where: { bookingId: booking.id },
+      update: {
+        status: demo.paymentStatus,
+        amount: seat.price,
+        phoneNumber: user.phone || "254700000000",
+        transactionRef,
+        checkoutRequestId,
+        merchantRequestId,
+        aiAnalysis:
+          demo.paymentStatus === "SUCCESS"
+            ? "AI demo payment analysis: trusted payment completed, confidence high."
+            : "AI demo payment analysis: failed payment captured for review/block demonstration.",
+      },
+      create: {
+        userId: user.id,
+        bookingId: booking.id,
+        method: "MPESA",
+        amount: seat.price,
+        phoneNumber: user.phone || "254700000000",
+        transactionRef,
+        checkoutRequestId,
+        merchantRequestId,
+        aiAnalysis:
+          demo.paymentStatus === "SUCCESS"
+            ? "AI demo payment analysis: trusted payment completed, confidence high."
+            : "AI demo payment analysis: failed payment captured for review/block demonstration.",
+        status: demo.paymentStatus,
+      },
+    });
   }
 
   console.log("✅ Seed completed successfully");
@@ -496,6 +823,10 @@ async function main() {
   console.log(`Trips: ${await prisma.trip.count()}`);
   console.log(`Bookings: ${await prisma.booking.count()}`);
   console.log(`Payments: ${await prisma.payment.count()}`);
+  console.log("Demo booking codes:");
+  console.log("- DEMO-BOOK-ALLOW-001 (confirmed + payment success)");
+  console.log("- DEMO-BOOK-REVIEW-002 (pending + payment failed)");
+  console.log("- DEMO-BOOK-BLOCK-003 (cancelled + payment failed)");
   console.log(`Default password for all seeded users: ${DEFAULT_PASSWORD}`);
 }
 

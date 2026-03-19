@@ -14,6 +14,7 @@ export default function ConfirmBooking() {
   const toast = useToast();
   const [phone, setLocalPhone] = useState(booking.phone || user?.phone || '');
   const [phoneError, setPhoneError] = useState('');
+  const [confirmPersonalData, setConfirmPersonalData] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleProceed = async () => {
@@ -25,6 +26,11 @@ export default function ConfirmBooking() {
 
     if (!booking.passenger) {
       toast('Passenger details are missing. Please reselect seat and add passenger details.', 'error');
+      return;
+    }
+
+    if (!confirmPersonalData) {
+      toast('Please confirm your personal data before proceeding.', 'warning');
       return;
     }
 
@@ -118,7 +124,19 @@ export default function ConfirmBooking() {
               <span className="form-hint">An STK push will be sent to this number</span>
             </div>
 
-            <button className="btn btn-primary btn-full btn-lg" onClick={handleProceed} disabled={submitting}>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 12, fontSize: 13, color: 'var(--gray-600)' }}>
+              <input
+                type="checkbox"
+                checked={confirmPersonalData}
+                onChange={(e) => setConfirmPersonalData(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                I confirm my personal details (name, ID, residence, email, and phone) are correct before booking.
+              </span>
+            </label>
+
+            <button className="btn btn-primary btn-full btn-lg" onClick={handleProceed} disabled={submitting || !confirmPersonalData}>
               {submitting ? 'Creating booking…' : `Pay KES ${(booking.fare || 850).toLocaleString()} via M-Pesa →`}
             </button>
           </div>

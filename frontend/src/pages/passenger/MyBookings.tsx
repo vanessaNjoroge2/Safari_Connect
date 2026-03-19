@@ -10,6 +10,7 @@ interface BookingRow {
   id: string;
   ref: string; route: string; sacco: string;
   date: string; seat: string; fare: string;
+  aiAnalysis: string;
   status: string; variant: BadgeVariant;
 }
 
@@ -44,6 +45,7 @@ export default function MyBookings() {
             }),
             seat: `${b.seat.seatNumber} ${b.seat.seatClass}`,
             fare: `KES ${Number(b.amount).toLocaleString()}`,
+            aiAnalysis: b.aiAnalysis || 'AI analysis pending for this booking.',
             status: mappedStatus.text,
             variant: mappedStatus.variant,
           };
@@ -79,7 +81,7 @@ export default function MyBookings() {
           <thead>
             <tr>
               <th>Booking ref</th><th>Route</th><th>SACCO</th><th>Date</th>
-              <th>Seat</th><th>Fare</th><th>Status</th><th>Action</th>
+              <th>Seat</th><th>Fare</th><th>AI analysis</th><th>Status</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -91,6 +93,7 @@ export default function MyBookings() {
                 <td>{b.date}</td>
                 <td>{b.seat}</td>
                 <td style={{ fontWeight:600 }}>{b.fare}</td>
+                <td style={{ maxWidth: 280, fontSize: 12.5, color: 'var(--gray-600)' }}>{b.aiAnalysis}</td>
                 <td><Badge variant={b.variant}>{b.status}</Badge></td>
                 <td>
                   <button className="btn btn-sm" onClick={() => navigate(`/passenger/ticket?bookingId=${b.id}`)}>
