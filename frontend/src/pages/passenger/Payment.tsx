@@ -3,14 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Steps } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
+import { getPaymentStatusApi, initiateStkPushApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 
 type PayStatus = 'waiting' | 'success' | 'failed';
 
 export default function Payment() {
   const navigate = useNavigate();
   const { booking, confirmBooking } = useBooking();
+  const toast = useToast();
   const [status, setStatus] = useState<PayStatus>('waiting');
   const [seconds, setSeconds] = useState(60);
+  const [initiating, setInitiating] = useState(false);
+
+  const triggerStkPush = async () => {
+    if (!booking.bookingId || !booking.phone) return;
+    setInitiating(true);
+    try {
+      await initiateStkPushApi({ bookingId: booking.bookingId, phoneNumber: booking.phone });
+      toast('STK push sent. Complete payment on your phone.', 'info');
+    } catch (error) {
+      setStatus('failed');
+      toast((error as Error).message || 'Failed to initiate M-Pesa payment', 'error');
+    } finally {
+      setInitiating(false);
+    }
+  };
 
   useEffect(() => {
     if (status !== 'waiting') return;
@@ -23,11 +41,40 @@ export default function Payment() {
     return () => clearInterval(t);
   }, [status]);
 
-  const simulateSuccess = () => {
-    confirmBooking();
-    setStatus('success');
-    setTimeout(() => navigate('/passenger/ticket'), 1400);
-  };
+  useEffect(() => {
+    if (!booking.bookingId || !booking.phone) return;
+    void triggerStkPush();
+  }, [booking.bookingId, booking.phone]);
+
+  useEffect(() => {
+    if (status !== 'waiting' || !booking.bookingId) return;
+
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          const payment = await getPaymentStatusApi(booking.bookingId);
+          const payStatus = payment.data.payment?.status;
+
+          if (payStatus === 'SUCCESS' || payment.data.bookingStatus === 'CONFIRMED') {
+            confirmBooking(payment.data.bookingCode, payment.data.bookingId, payment.data.bookingStatus);
+            setStatus('success');
+            clearInterval(poll);
+            setTimeout(() => navigate('/passenger/ticket'), 900);
+            return;
+          }
+
+          if (payStatus === 'FAILED') {
+            setStatus('failed');
+            clearInterval(poll);
+          }
+        } catch {
+          // Keep polling until timeout.
+        }
+      })();
+    }, 5000);
+
+    return () => clearInterval(poll);
+  }, [status, booking.bookingId, confirmBooking, navigate]);
 
   return (
     <DashboardLayout title="M-Pesa Payment" subtitle="Complete payment to confirm your booking">
@@ -59,15 +106,12 @@ export default function Payment() {
                 </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-ghost btn-full" onClick={() => setSeconds(60)}>Resend STK push</button>
-                <button className="btn btn-primary btn-full" onClick={simulateSuccess}>
-                  Simulate success ✓
+                <button className="btn btn-ghost btn-full" onClick={() => { setSeconds(60); void triggerStkPush(); }} disabled={initiating}>Resend STK push</button>
+                <button className="btn btn-primary btn-full" disabled>
+                  Waiting for payment…
                 </button>
               </div>
-              <button className="btn btn-ghost btn-sm mt-3" style={{ color:'var(--danger)' }}
-                onClick={() => setStatus('failed')}>
-                Simulate failure
-              </button>
+              {initiating && <p className="text-xs text-muted mt-3">Initiating payment request…</p>}
             </>
           )}
 

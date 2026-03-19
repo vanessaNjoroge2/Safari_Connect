@@ -505,17 +505,33 @@ async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: text,
-        lang,
+        text,
+        language: lang,
         role,
       }),
     });
 
     if (!response.ok) throw new Error('AI chat request failed');
     const data = await response.json();
-    return (data?.data?.reply || data?.reply || '').toString();
+
+    const reply =
+      data?.data?.message ||
+      data?.data?.reply ||
+      data?.message ||
+      data?.reply ||
+      data?.data?.summary?.passengerMessage ||
+      '';
+
+    const resolved = String(reply);
+    return {
+      reply: resolved,
+      fromBackend: Boolean(resolved),
+    };
   } catch {
-    return '';
+    return {
+      reply: '',
+      fromBackend: false,
+    };
   }
 }
 
@@ -524,7 +540,7 @@ async function fetchVoiceAudio(text: string, lang: ChatLang) {
     const response = await fetch(`${API_BASE}/api/ai/voice`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang }),
+      body: JSON.stringify({ transcript: text, language: lang }),
     });
 
     if (!response.ok) return null;
@@ -544,20 +560,19 @@ async function fetchVoiceAudio(text: string, lang: ChatLang) {
   }
 }
 
-function speakWithBrowserTts(text: string, lang: ChatLang) {
-  if (!('speechSynthesis' in window)) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang === 'sw' ? 'sw-KE' : 'en-KE';
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
-}
-
 async function playBase64Audio(audioBase64: string, audioMimeType: string) {
   const src = `data:${audioMimeType};base64,${audioBase64}`;
   const audio = new Audio(src);
+  audio.preload = 'auto';
   await audio.play();
+}
+
+function normalizeSpeechText(text: string) {
+  return text
+    .replace(/\*\*/g, '')
+    .replace(/[`#>*_~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function now() {
@@ -568,6 +583,7 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<ChatLang>('en');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [autoVoiceOnMic, setAutoVoiceOnMic] = useState(true);
   const [listening, setListening] = useState(false);
   const [unread, setUnread] = useState(0);
   const [msgs, setMsgs] = useState<ChatMsg[]>([
@@ -582,8 +598,10 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
   ]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
+  const [aiBackendOnline, setAiBackendOnline] = useState(true);
   const lastAiIndexRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const voicePrimedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -608,6 +626,57 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     lastAiIndexRef.current = lastAiIdx;
   }, [msgs, open]);
 
+  const primeVoice = () => {
+    if (voicePrimedRef.current) return;
+
+    try {
+      // Prime browser speech engines on a direct user gesture to avoid autoplay blocks.
+      if ('speechSynthesis' in window) {
+        const primer = new SpeechSynthesisUtterance(' ');
+        primer.volume = 0;
+        window.speechSynthesis.speak(primer);
+        window.speechSynthesis.cancel();
+      }
+
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        if (ctx.state === 'suspended') {
+          void ctx.resume();
+        }
+      }
+
+      voicePrimedRef.current = true;
+    } catch {
+      // Keep chat functional even if priming fails.
+    }
+  };
+
+  const speakWithPreferredVoice = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+
+    const clean = normalizeSpeechText(text);
+    if (!clean) return;
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = lang === 'sw' ? 'sw-KE' : 'en-KE';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find((v) =>
+      lang === 'sw' ? v.lang.toLowerCase().startsWith('sw') : v.lang.toLowerCase().startsWith('en')
+    );
+
+    if (preferred) {
+      utterance.voice = preferred;
+    }
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+    window.speechSynthesis.speak(utterance);
+  };
+
   const speakReply = async (replyText: string) => {
     if (!voiceEnabled) return;
 
@@ -621,7 +690,7 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
       }
     }
 
-    speakWithBrowserTts(replyText, lang);
+    speakWithPreferredVoice(replyText);
   };
 
   const startListening = () => {
@@ -637,7 +706,10 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     rec.onresult = (event: any) => {
       const transcript = event?.results?.[0]?.[0]?.transcript || '';
       if (transcript) {
-        setInput(String(transcript));
+        const spoken = String(transcript).trim();
+        if (!spoken) return;
+        setInput(spoken);
+        void send(spoken, { fromVoice: true });
       }
     };
     rec.onerror = () => setListening(false);
@@ -645,8 +717,10 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     rec.start();
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, options?: { fromVoice?: boolean }) => {
     if (!text.trim()) return;
+    primeVoice();
+
     const raw = text.trim();
     const userMsg: ChatMsg = { from: 'user', text: raw, time: now() };
     setMsgs((m) => [...m, userMsg]);
@@ -654,12 +728,16 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     setTyping(true);
 
     const backendReply = await fetchAiReply(raw, lang, role);
-    const reply = backendReply || getAiReplyByLang(raw, lang);
+    const reply = backendReply.reply || getAiReplyByLang(raw, lang);
+    setAiBackendOnline(backendReply.fromBackend);
+    const shouldAutoSpeak = voiceEnabled && (!autoVoiceOnMic || !!options?.fromVoice);
 
     setTimeout(() => {
       setTyping(false);
       setMsgs((m) => [...m, { from: 'ai', text: reply, time: now() }]);
-      void speakReply(reply);
+      if (shouldAutoSpeak) {
+        void speakReply(reply);
+      }
     }, 700);
   };
 
@@ -668,7 +746,10 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
       {/* Floating button */}
       <button
         className={`float-chat-btn${open ? ' open' : ''}`}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          primeVoice();
+          setOpen((o) => !o);
+        }}
         title="AI Assistant"
         aria-label="Open AI chat assistant"
       >
@@ -701,22 +782,36 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
                 {role === 'admin' ? 'AI Platform Guardian' : 'SafiriConnect AI'}
               </div>
               <div className="float-chat-status">
-                <span className="float-chat-dot" /> Online · powered by AI agent
+                <span className="float-chat-dot" />
+                {aiBackendOnline ? 'Online · live AI agent' : 'Fallback mode · local guidance'}
               </div>
             </div>
-            <div className="float-chat-tools">
+            <button className="float-chat-close" onClick={() => setOpen(false)}>✕</button>
+          </div>
+
+          <div className="float-chat-controls">
+            <div className="float-chat-control-block">
+              <span className="float-chat-control-label">Language</span>
               <div className="float-chat-lang">
                 <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
                 <button className={lang === 'sw' ? 'active' : ''} onClick={() => setLang('sw')}>SW</button>
               </div>
-              <button className={`float-chat-tool-btn${voiceEnabled ? ' active' : ''}`} onClick={() => setVoiceEnabled((v) => !v)} title="Toggle voice replies">
-                {voiceEnabled ? '🔊' : '🔇'}
-              </button>
-              <button className={`float-chat-tool-btn${listening ? ' active' : ''}`} onClick={startListening} title="Voice input">
-                {listening ? '🎙️' : '🎤'}
+            </div>
+            <div className="float-chat-control-block">
+              <span className="float-chat-control-label">Voice</span>
+              <button className={`float-chat-tool-btn compact${voiceEnabled ? ' active' : ''}`} onClick={() => setVoiceEnabled((v) => !v)} title="Toggle voice replies">
+                {voiceEnabled ? '🔊 On' : '🔇 Off'}
               </button>
             </div>
-            <button className="float-chat-close" onClick={() => setOpen(false)}>✕</button>
+            <div className="float-chat-control-block stretch">
+              <button
+                className={`float-chat-auto-voice${autoVoiceOnMic ? ' active' : ''}`}
+                onClick={() => setAutoVoiceOnMic((v) => !v)}
+                title="Auto speak only when question came from voice"
+              >
+                {autoVoiceOnMic ? 'Auto voice on mic: On' : 'Auto voice on mic: Off'}
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -759,6 +854,9 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && send(input)}
             />
+            <button className={`float-chat-tool-btn input-mic${listening ? ' active' : ''}`} onClick={startListening} title="Voice input">
+              {listening ? '🎙️' : '🎤'}
+            </button>
             <button className="float-chat-send" onClick={() => send(input)} disabled={!input.trim()}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

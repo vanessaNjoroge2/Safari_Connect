@@ -4,17 +4,12 @@ import { AiBanner, Badge } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
 import type { BusResult } from '../../types';
 
-const BUSES: BusResult[] = [
-  { id:'1', saccoName:'Modern Coast Sacco', plateInfo:'KBZ 123A · 50 seats · ⭐ 4.8', rating:4.8, departureTime:'8:00 AM', arrivalTime:'11:30 AM', duration:'3h 30m', price:1050, priceLabel:'AI dynamic price', seatsLeft:18, classes:['economy','business','vip'], highlighted:true },
-  { id:'2', saccoName:'Easy Coach Sacco',   plateInfo:'KCA 456B · 50 seats · ⭐ 4.6', rating:4.6, departureTime:'10:00 AM', arrivalTime:'1:30 PM',   duration:'3h 30m', price:850,  priceLabel:'Standard fare',      seatsLeft:4,  classes:['economy','business'] },
-  { id:'3', saccoName:'Eldoret Express',    plateInfo:'KDB 789C · 33 seats · ⭐ 4.3', rating:4.3, departureTime:'2:00 PM',  arrivalTime:'5:45 PM',   duration:'3h 45m', price:780,  priceLabel:'Budget fare',         seatsLeft:27, classes:['economy'] },
-];
-
 const CLASS_LABEL: Record<string, string> = { economy:'Economy', business:'Business', vip:'VIP' };
 
 export default function Results() {
   const navigate = useNavigate();
   const { booking, selectBus } = useBooking();
+  const buses = booking.searchResults;
 
   const handleSelect = (bus: BusResult) => {
     selectBus(bus);
@@ -29,7 +24,15 @@ export default function Results() {
     >
       <AiBanner text="<strong>High demand detected.</strong> Fares are AI-priced up to 24% above standard — 89% of seats already filled across all buses. Book now to secure your seat." />
 
-      {BUSES.map(bus => (
+      {buses.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', padding: '32px 24px' }}>
+          <h4 style={{ marginBottom: 8 }}>No trips found</h4>
+          <p className="text-muted mb-4">Try changing your route, date, or time.</p>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate('/passenger/search')}>Modify search</button>
+        </div>
+      )}
+
+      {buses.map(bus => (
         <div key={bus.id} className="bus-card"
           style={bus.highlighted ? { borderColor:'var(--brand)', boxShadow:'0 0 0 3px rgba(14,163,113,.08)' } : {}}
           onClick={() => handleSelect(bus)}>

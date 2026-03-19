@@ -1,28 +1,69 @@
+import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Badge } from '../../components/UI';
 import type { BadgeVariant } from '../../types';
+import { getMyBookingsApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 
 interface PayRow {
+  id: string;
   ref: string; bookingRef: string; route: string;
   date: string; method: string; amount: string;
   status: string; variant: BadgeVariant;
   mpesaCode: string;
 }
 
-const PAYMENTS: PayRow[] = [
-  { ref:'PAY-20260318-001', bookingRef:'SC-2026-00892', route:'Nairobi → Nakuru',  date:'18 Mar 2026', method:'M-Pesa', amount:'KES 850',   status:'Confirmed', variant:'green', mpesaCode:'RGK7YX2891' },
-  { ref:'PAY-20260318-002', bookingRef:'SC-2026-00788', route:'Nairobi → Mombasa', date:'18 Mar 2026', method:'M-Pesa', amount:'KES 2,200', status:'Confirmed', variant:'green', mpesaCode:'RGK8MN3012' },
-  { ref:'PAY-20260310-003', bookingRef:'SC-2026-00541', route:'Nairobi → Kisumu',  date:'10 Mar 2026', method:'M-Pesa', amount:'KES 1,100', status:'Confirmed', variant:'green', mpesaCode:'RGJ4PQ1234' },
-  { ref:'PAY-20260302-004', bookingRef:'SC-2026-00399', route:'Nairobi → Nakuru',  date:'2 Mar 2026',  method:'M-Pesa', amount:'KES 1,200', status:'Confirmed', variant:'green', mpesaCode:'RGH2AB5678' },
-  { ref:'PAY-20260214-005', bookingRef:'SC-2026-00211', route:'Nairobi → Eldoret', date:'14 Feb 2026', method:'M-Pesa', amount:'KES 900',   status:'Refunded',  variant:'amber', mpesaCode:'RGF9CD9012' },
-];
-
-const total = PAYMENTS.filter(p => p.status !== 'Refunded').reduce((sum, p) => {
-  const n = parseInt(p.amount.replace(/[^0-9]/g, ''), 10);
-  return sum + n;
-}, 0);
+function mapPaymentStatus(status: string): { text: string; variant: BadgeVariant } {
+  if (status === 'SUCCESS') return { text: 'Confirmed', variant: 'green' };
+  if (status === 'PENDING') return { text: 'Pending', variant: 'amber' };
+  if (status === 'FAILED') return { text: 'Failed', variant: 'red' };
+  return { text: status || 'Not started', variant: 'gray' };
+}
 
 export default function PassengerPayments() {
+  const toast = useToast();
+  const [rows, setRows] = useState<PayRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await getMyBookingsApi();
+        const mapped = result.data.map((b, idx) => {
+          const pay = mapPaymentStatus(b.payment?.status || 'PENDING');
+          return {
+            id: b.id,
+            ref: `PAY-${String(idx + 1).padStart(6, '0')}`,
+            bookingRef: b.bookingCode,
+            route: `${b.trip.route.origin} → ${b.trip.route.destination}`,
+            date: new Date(b.createdAt).toLocaleDateString('en-KE', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            }),
+            method: 'M-Pesa',
+            amount: `KES ${Number(b.amount).toLocaleString()}`,
+            status: pay.text,
+            variant: pay.variant,
+            mpesaCode: b.payment?.transactionRef || '—',
+          };
+        });
+
+        setRows(mapped);
+      } catch (error) {
+        toast((error as Error).message || 'Failed to load payment history', 'error');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  const total = useMemo(() => {
+    return rows
+      .filter((p) => p.status !== 'Refunded' && p.status !== 'Failed')
+      .reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9]/g, '') || 0), 0);
+  }, [rows]);
+
   return (
     <DashboardLayout
       title="My payments"
@@ -32,8 +73,8 @@ export default function PassengerPayments() {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:28 }}>
         {[
           { label:'Total spent',      value:`KES ${total.toLocaleString()}`, sub:'All time' },
-          { label:'Transactions',     value:PAYMENTS.length,                 sub:'All time' },
-          { label:'Last payment',     value:'KES 2,200',                     sub:'18 Mar 2026' },
+          { label:'Transactions',     value:rows.length,                     sub:'All time' },
+          { label:'Last payment',     value:rows[0]?.amount ?? 'KES 0',      sub:rows[0]?.date ?? '—' },
         ].map(c => (
           <div key={c.label} className="card" style={{ padding:'20px 24px' }}>
             <div className="kpi-label">{c.label}</div>
@@ -43,7 +84,17 @@ export default function PassengerPayments() {
         ))}
       </div>
 
+      {loading && <div className="card text-center">Loading payments…</div>}
+
+      {!loading && rows.length === 0 && (
+        <div className="card text-center" style={{ padding: '28px 20px' }}>
+          <h4 style={{ marginBottom: 8 }}>No payments yet</h4>
+          <p className="text-muted">Your M-Pesa transactions will appear here once you complete payment.</p>
+        </div>
+      )}
+
       {/* Transactions table */}
+      {!loading && rows.length > 0 && (
       <div className="table-wrap">
         <table className="sc-table">
           <thead>
@@ -59,8 +110,8 @@ export default function PassengerPayments() {
             </tr>
           </thead>
           <tbody>
-            {PAYMENTS.map(p => (
-              <tr key={p.ref}>
+            {rows.map(p => (
+              <tr key={p.id}>
                 <td className="td-primary" style={{ fontFamily:'monospace', fontSize:12 }}>{p.ref}</td>
                 <td style={{ fontFamily:'monospace', fontSize:12, color:'var(--gray-500)' }}>{p.bookingRef}</td>
                 <td style={{ fontWeight:500 }}>{p.route}</td>
@@ -82,6 +133,7 @@ export default function PassengerPayments() {
           </tbody>
         </table>
       </div>
+      )}
 
       <p className="text-xs text-muted mt-3" style={{ display:'flex', alignItems:'center', gap:6 }}>
         🔒 All payments processed securely via Safaricom M-Pesa. For disputes contact{' '}

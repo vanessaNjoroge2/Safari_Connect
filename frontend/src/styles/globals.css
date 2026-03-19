@@ -957,23 +957,49 @@ p  { color: var(--gray-500); }
   align-items: center;
   gap: 6px;
 }
+.float-chat-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray-100);
+  background: var(--gray-50);
+}
+.float-chat-control-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.float-chat-control-block.stretch {
+  margin-left: auto;
+}
+.float-chat-control-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gray-500);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
 .float-chat-lang {
   display: inline-flex;
   border: 1px solid rgba(255,255,255,.35);
   border-radius: 99px;
   overflow: hidden;
+  background: #fff;
+  border-color: var(--gray-200);
 }
 .float-chat-lang button {
   border: none;
   background: transparent;
-  color: rgba(255,255,255,.8);
+  color: var(--gray-500);
   font-size: 10px;
   font-weight: 700;
   padding: 4px 7px;
   cursor: pointer;
 }
 .float-chat-lang button.active {
-  background: rgba(255,255,255,.2);
+  background: var(--brand);
   color: #fff;
 }
 .float-chat-tool-btn {
@@ -991,6 +1017,46 @@ p  { color: var(--gray-500); }
 }
 .float-chat-tool-btn.active {
   background: rgba(255,255,255,.28);
+}
+.float-chat-tool-btn.compact {
+  width: auto;
+  min-width: 74px;
+  border-radius: 99px;
+  padding: 0 10px;
+  font-size: 11px;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  color: var(--gray-700);
+}
+.float-chat-tool-btn.compact.active {
+  background: var(--brand-light);
+  border-color: var(--brand-mid);
+  color: var(--brand-dark);
+}
+.float-chat-auto-voice {
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  color: var(--gray-600);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.float-chat-auto-voice.active {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+.float-chat-tool-btn.input-mic {
+  background: var(--gray-100);
+  color: var(--gray-700);
+  border: 1px solid var(--gray-200);
+}
+.float-chat-tool-btn.input-mic.active {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 
 .float-chat-msgs {

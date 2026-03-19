@@ -54,6 +54,8 @@ export interface SearchQuery {
 
 export interface BusResult {
   id: string;
+  busId?: string;
+  routeId?: string;
   saccoName: string;
   plateInfo: string;
   rating: number;
@@ -67,6 +69,14 @@ export interface BusResult {
   highlighted?: boolean;
 }
 
+export interface TripSeat {
+  id: string;
+  seatNumber: string;
+  seatClass: SeatClass;
+  price: number;
+  isBooked: boolean;
+}
+
 export interface PassengerDetails {
   firstName: string;
   lastName: string;
@@ -77,13 +87,19 @@ export interface PassengerDetails {
 
 export interface BookingState {
   searchQuery: SearchQuery | null;
+  searchResults: BusResult[];
   selectedBus: BusResult | null;
+  selectedTripId: string | null;
+  tripSeats: TripSeat[];
   selectedSeat: string | null;
+  selectedSeatId: string | null;
   seatClass: SeatClass;
   fare: number;
   passenger: PassengerDetails | null;
   phone: string;
   bookingRef: string;
+  bookingId: string;
+  bookingStatus: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | '';
 }
 
 // ─── Owner / Fleet ───────────────────────────────────────────────────────────

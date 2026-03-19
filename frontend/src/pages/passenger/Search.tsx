@@ -4,11 +4,27 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useBooking } from '../../context/BookingContext';
 import type { SearchQuery, Category, TripType } from '../../types';
+import { searchTripsApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
+
+function toFrontendSeatClass(classes: Array<'VIP' | 'FIRST_CLASS' | 'BUSINESS'>) {
+  const mapped = new Set<'economy' | 'business' | 'vip'>();
+  classes.forEach((c) => {
+    if (c === 'VIP') mapped.add('vip');
+    else if (c === 'FIRST_CLASS') mapped.add('business');
+    else mapped.add('economy');
+  });
+
+  if (mapped.size === 0) mapped.add('economy');
+  return Array.from(mapped);
+}
 
 export default function Search() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { setSearch } = useBooking();
+  const { setSearch, setSearchResults } = useBooking();
+  const toast = useToast();
+  const [isSearching, setIsSearching] = useState(false);
 
   const [form, setForm] = useState<SearchQuery>({
     category:   (params.get('cat') ?? 'bus') as Category,
@@ -36,11 +52,38 @@ export default function Search() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    setSearch(form);
-    navigate('/passenger/results');
+
+    setIsSearching(true);
+    try {
+      const result = await searchTripsApi(form);
+      const mapped = result.data.map((trip, idx) => ({
+        id: trip.id,
+        busId: trip.bus.id,
+        routeId: trip.route.id,
+        saccoName: trip.sacco.name,
+        plateInfo: `${trip.bus.plateNumber} · ${trip.bus.seatCapacity} seats`,
+        rating: 4.6,
+        departureTime: new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+        arrivalTime: new Date(trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+        duration: trip.duration,
+        price: Number(trip.basePrice),
+        priceLabel: 'Live fare',
+        seatsLeft: trip.availableSeatsCount,
+        classes: toFrontendSeatClass(trip.seatClasses),
+        highlighted: idx === 0,
+      }));
+
+      setSearch(form);
+      setSearchResults(mapped);
+      navigate('/passenger/results');
+    } catch (error) {
+      toast((error as Error).message || 'Unable to fetch trips right now', 'error');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const CATS: { id: Category; icon: string; label: string }[] = [
@@ -134,8 +177,8 @@ export default function Search() {
               </select>
             </div>
 
-            <button type="submit" className="btn btn-primary btn-lg" style={{ minWidth: 220 }}>
-              Search available trips →
+            <button type="submit" className="btn btn-primary btn-lg" style={{ minWidth: 220 }} disabled={isSearching}>
+              {isSearching ? 'Searching trips…' : 'Search available trips →'}
             </button>
           </form>
         </div>

@@ -3,17 +3,55 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Steps } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
+import { createBookingApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ConfirmBooking() {
   const navigate = useNavigate();
-  const { booking, setPhone } = useBooking();
-  const [phone, setLocalPhone] = useState(booking.phone || '');
+  const { booking, setPhone, confirmBooking } = useBooking();
+  const { user } = useAuth();
+  const toast = useToast();
+  const [phone, setLocalPhone] = useState(booking.phone || user?.phone || '');
   const [phoneError, setPhoneError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleProceed = () => {
+  const handleProceed = async () => {
     if (!phone) { setPhoneError('Please enter your M-Pesa phone number'); return; }
-    setPhone(phone);
-    navigate('/passenger/payment');
+    if (!booking.selectedTripId || !booking.selectedSeatId) {
+      toast('Please go back and select a valid seat', 'error');
+      return;
+    }
+
+    if (!booking.passenger) {
+      toast('Passenger details are missing. Please reselect seat and add passenger details.', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const payload = {
+        tripId: booking.selectedTripId,
+        seatId: booking.selectedSeatId,
+        firstName: booking.passenger.firstName,
+        lastName: booking.passenger.lastName,
+        email: booking.passenger.email,
+        phone,
+        nationalId: booking.passenger.idNumber,
+        residence: booking.passenger.residence,
+      };
+
+      const result = await createBookingApi(payload);
+
+      confirmBooking(result.data.bookingCode, result.data.id, result.data.status as any);
+      setPhone(phone);
+      navigate('/passenger/payment');
+    } catch (error) {
+      toast((error as Error).message || 'Failed to create booking', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const p = booking.passenger;
@@ -80,8 +118,8 @@ export default function ConfirmBooking() {
               <span className="form-hint">An STK push will be sent to this number</span>
             </div>
 
-            <button className="btn btn-primary btn-full btn-lg" onClick={handleProceed}>
-              Pay KES {(booking.fare || 850).toLocaleString()} via M-Pesa →
+            <button className="btn btn-primary btn-full btn-lg" onClick={handleProceed} disabled={submitting}>
+              {submitting ? 'Creating booking…' : `Pay KES ${(booking.fare || 850).toLocaleString()} via M-Pesa →`}
             </button>
           </div>
         </div>

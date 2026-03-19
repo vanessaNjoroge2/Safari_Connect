@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Steps, SeatMap, Modal } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
 import type { SeatClass, PassengerDetails } from '../../types';
+import { getTripSeatsApi } from '../../lib/api';
+import { useToast } from '../../hooks/useToast';
 
 const CLASSES: { id: SeatClass; label: string; price: number; sub: string; color: string; bg: string; icon: string; perks: string[] }[] = [
   {
@@ -24,15 +26,60 @@ const EMPTY_PAX: PassengerDetails = { firstName: '', lastName: '', idNumber: '',
 
 export default function SeatSelection() {
   const navigate = useNavigate();
-  const { booking, selectSeat, setPassenger } = useBooking();
+  const { booking, setTripSeats, selectSeat, setPassenger } = useBooking();
+  const toast = useToast();
 
   const [seatClass, setSeatClass] = useState<SeatClass>('economy');
   const [seatLabel, setSeatLabel] = useState<string | null>(null);
   const [paxOpen, setPaxOpen] = useState(false);
   const [pax, setPax] = useState<PassengerDetails>(EMPTY_PAX);
   const [paxSaved, setPaxSaved] = useState(false);
+  const [loadingSeats, setLoadingSeats] = useState(false);
+
+  useEffect(() => {
+    const tripId = booking.selectedTripId || booking.selectedBus?.id;
+    if (!tripId) return;
+
+    setLoadingSeats(true);
+    void (async () => {
+      try {
+        const result = await getTripSeatsApi(tripId);
+        const seats = result.data.seats.map((seat) => {
+          const mappedClass: SeatClass =
+            seat.seatClass === 'VIP'
+              ? 'vip'
+              : seat.seatClass === 'FIRST_CLASS'
+                ? 'business'
+                : 'economy';
+
+          return {
+          id: seat.id,
+          seatNumber: seat.seatNumber,
+          seatClass: mappedClass,
+          price: Number(seat.price),
+          isBooked: seat.isBooked,
+          };
+        });
+
+        setTripSeats(seats);
+      } catch (error) {
+        toast((error as Error).message || 'Unable to fetch seats for this trip', 'error');
+      } finally {
+        setLoadingSeats(false);
+      }
+    })();
+  }, [booking.selectedTripId, booking.selectedBus?.id, setTripSeats, toast]);
 
   const cls = CLASSES.find(c => c.id === seatClass)!;
+
+  const seatCounts = useMemo(() => {
+    const available = booking.tripSeats.filter((s) => !s.isBooked);
+    return {
+      vip: available.filter((s) => s.seatClass === 'vip').length,
+      business: available.filter((s) => s.seatClass === 'business').length,
+      economy: available.filter((s) => s.seatClass === 'economy').length,
+    };
+  }, [booking.tripSeats]);
 
   const handleSeatClick = (label: string, type: SeatClass) => {
     setSeatClass(type);
@@ -42,7 +89,8 @@ export default function SeatSelection() {
 
   const savePax = () => {
     if (!seatLabel) return;
-    selectSeat(seatLabel, seatClass, cls.price);
+    const selected = booking.tripSeats.find((s) => s.seatNumber === seatLabel);
+    selectSeat(seatLabel, seatClass, selected?.price ?? cls.price);
     setPassenger(pax);
     setPaxSaved(true);
     setPaxOpen(false);
@@ -101,13 +149,13 @@ export default function SeatSelection() {
             {/* Seat count info */}
             <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--gray-50)', borderRadius: 8, fontSize: 12, color: 'var(--gray-500)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span>VIP available</span><span style={{ fontWeight: 600, color: '#7c3aed' }}>4 seats</span>
+                <span>VIP available</span><span style={{ fontWeight: 600, color: '#7c3aed' }}>{seatCounts.vip} seats</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span>Business available</span><span style={{ fontWeight: 600, color: '#3b82f6' }}>8 seats</span>
+                <span>Business available</span><span style={{ fontWeight: 600, color: '#3b82f6' }}>{seatCounts.business} seats</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Economy available</span><span style={{ fontWeight: 600, color: 'var(--brand)' }}>22 seats</span>
+                <span>Economy available</span><span style={{ fontWeight: 600, color: 'var(--brand)' }}>{seatCounts.economy} seats</span>
               </div>
             </div>
           </div>
@@ -132,6 +180,7 @@ export default function SeatSelection() {
             )}
           </div>
           <SeatMap onSelect={handleSeatClick} selectedClass={seatClass} />
+          {loadingSeats && <p className="text-xs text-muted mt-2">Loading live seats…</p>}
         </div>
 
         {/* ── RIGHT: booking summary ── */}
