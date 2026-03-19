@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BadgeVariant, SeatClass } from '../types';
+
+type ChatRole = 'passenger' | 'admin' | 'owner';
+type ChatLang = 'en' | 'sw';
+type AutopilotMode = 'suggest-only' | 'human-approve' | 'auto-apply';
 
 // ─── Badge ───────────────────────────────────────────────────────────────────
 interface BadgeProps { variant?: BadgeVariant; children: ReactNode; }
@@ -27,6 +31,7 @@ interface AiDecisionCard {
   result: string;
   detail: string;
   confidence: number;
+  evidence?: string[];
   actionLabel?: string;
   onAction?: () => void;
   accentColor?: string;
@@ -38,6 +43,47 @@ interface AiAgentPanelProps {
   cols?: 2 | 3;
 }
 export function AiAgentPanel({ title, subtitle, cards, cols = 3 }: AiAgentPanelProps) {
+  const [mode, setMode] = useState<AutopilotMode>('human-approve');
+  const [timeline, setTimeline] = useState<Array<{ id: string; note: string; time: string; state: 'applied' | 'rolled-back' | 'suggested' }>>([]);
+
+  const stamp = () =>
+    new Date().toLocaleTimeString('en-KE', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  const pushTimeline = (note: string, state: 'applied' | 'rolled-back' | 'suggested') => {
+    setTimeline((prev) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        note,
+        state,
+        time: stamp(),
+      },
+      ...prev,
+    ].slice(0, 6));
+  };
+
+  const runCardAction = (card: AiDecisionCard) => {
+    if (mode === 'suggest-only') {
+      pushTimeline(`${card.type}: suggestion queued`, 'suggested');
+      return;
+    }
+
+    card.onAction?.();
+
+    if (mode === 'auto-apply') {
+      pushTimeline(`${card.type}: auto-applied`, 'applied');
+      return;
+    }
+
+    pushTimeline(`${card.type}: applied after approval`, 'applied');
+  };
+
+  const rollbackCardAction = (card: AiDecisionCard) => {
+    pushTimeline(`${card.type}: action rolled back`, 'rolled-back');
+  };
+
   return (
     <div className="ai-agent-section">
       <div className="ai-agent-header">
@@ -45,6 +91,19 @@ export function AiAgentPanel({ title, subtitle, cards, cols = 3 }: AiAgentPanelP
         <div>
           <div className="ai-agent-title">{title}</div>
           {subtitle && <div className="ai-agent-sub">{subtitle}</div>}
+        </div>
+        <div className="ai-agent-toolbar">
+          <label className="ai-mode-label" htmlFor="ai-autopilot-mode">Autopilot</label>
+          <select
+            id="ai-autopilot-mode"
+            className="ai-mode-select"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as AutopilotMode)}
+          >
+            <option value="suggest-only">Suggest only</option>
+            <option value="human-approve">Human approve</option>
+            <option value="auto-apply">Auto apply</option>
+          </select>
         </div>
       </div>
       <div className={`ai-agent-grid${cols === 2 ? ' ai-agent-grid-2' : ''}`}>
@@ -61,14 +120,39 @@ export function AiAgentPanel({ title, subtitle, cards, cols = 3 }: AiAgentPanelP
               </div>
               <span className="ai-confidence-label">{c.confidence}% confidence</span>
             </div>
+            <div className="ai-provenance">
+              <span>Model: Safiri AI</span>
+              <span>Mode: {mode.replace('-', ' ')}</span>
+              <span>Updated: {stamp()}</span>
+            </div>
+            {c.evidence && c.evidence.length > 0 && (
+              <ul className="ai-evidence-list">
+                {c.evidence.slice(0, 3).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
             {c.actionLabel && (
-              <div className="ai-decision-action">
-                <button className="btn btn-sm" style={{ fontSize: 12 }} onClick={c.onAction}>{c.actionLabel}</button>
+              <div className="ai-decision-actions">
+                <button className="btn btn-sm" style={{ fontSize: 12 }} onClick={() => runCardAction(c)}>{c.actionLabel}</button>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => rollbackCardAction(c)}>Rollback</button>
               </div>
             )}
           </div>
         ))}
       </div>
+      {timeline.length > 0 && (
+        <div className="ai-timeline">
+          <div className="ai-timeline-title">Decision Timeline</div>
+          {timeline.map((event) => (
+            <div className="ai-timeline-item" key={event.id}>
+              <span className={`ai-timeline-state ${event.state}`}>{event.state}</span>
+              <span className="ai-timeline-note">{event.note}</span>
+              <span className="ai-timeline-time">{event.time}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -370,12 +454,27 @@ const QUICK_REPLIES = [
   'What is my trust score?',
 ];
 
+const QUICK_REPLIES_SW = [
+  'Nionyeshe safari ya bei nafuu Mombasa',
+  'Basi ijayo ya Nakuru ni saa ngapi?',
+  'Fuatilia booking SC-2026-00892',
+  'Trust score yangu ni ngapi?',
+];
+
 const AI_RESPONSES: Record<string, string> = {
   default: "I'm your SafiriConnect AI assistant. I can help you find trips, check fares, track bookings, and answer any transport questions. How can I help?",
   mombasa: "🚌 **Nairobi → Mombasa** — Next departures:\n• 06:00 AM · Easy Coach · KES 1,500 · 14 seats left\n• 08:00 AM · Modern Coast · KES 1,800 (VIP) · 6 seats\n\n**AI Insight:** Fares are expected to rise 12% by Thursday. Book now for best price.",
   nakuru: "🚌 **Nairobi → Nakuru** — Next bus departs in **42 minutes** (14 seats left). \nFare: KES 850. Estimated journey: 2h 10min.\n\nShall I reserve a seat for you?",
   track: "📋 **Booking SC-2026-00892**\n• Route: Nairobi → Nakuru\n• Date: 18 Mar 2026 · Seat 14B\n• Status: **Upcoming** ✅\n• Departure: 8:00 AM from Westlands Terminus",
   trust: "🛡️ **Your AI Trust Score: 94/100 — Excellent**\n\nBased on: 12 completed trips, zero cancellations, verified ID, positive driver ratings.\n\nTop 6% of all SafiriConnect passengers.",
+};
+
+const AI_RESPONSES_SW: Record<string, string> = {
+  default: 'Mimi ni msaidizi wako wa SafiriConnect AI. Naweza kusaidia kupanga safari, bei, na kufuatilia booking. Nikusaidie vipi?',
+  mombasa: '🚌 **Nairobi → Mombasa** — Safari zijazo:\n• 06:00 AM · Easy Coach · KES 1,500 · viti 14\n• 08:00 AM · Modern Coast · KES 1,800 (VIP) · viti 6\n\n**Ushauri wa AI:** Bei zinaweza kupanda kwa 12% kufikia Alhamisi. Book mapema.',
+  nakuru: '🚌 **Nairobi → Nakuru** — Basi inayofuata inaondoka ndani ya dakika **42** (viti 14).\nNauli: KES 850. Muda wa safari: 2h 10min.',
+  track: '📋 **Booking SC-2026-00892**\n• Njia: Nairobi → Nakuru\n• Tarehe: 18 Mar 2026 · Kiti 14B\n• Hali: **Upcoming** ✅\n• Kuondoka: 8:00 AM Westlands Terminus',
+  trust: '🛡️ **AI Trust Score yako: 94/100 — Bora Sana**\n\nKwa msingi wa: safari 12 zilizokamilika, hakuna cancellation, ID verified, na ratings nzuri.',
 };
 
 function getAiReply(msg: string): string {
@@ -387,32 +486,181 @@ function getAiReply(msg: string): string {
   return AI_RESPONSES.default;
 }
 
+function getAiReplyByLang(msg: string, lang: ChatLang): string {
+  if (lang === 'en') return getAiReply(msg);
+
+  const m = msg.toLowerCase();
+  if (m.includes('mombasa') || m.includes('bei')) return AI_RESPONSES_SW.mombasa;
+  if (m.includes('nakuru') || m.includes('ijayo')) return AI_RESPONSES_SW.nakuru;
+  if (m.includes('fuatilia') || m.includes('booking') || m.includes('sc-')) return AI_RESPONSES_SW.track;
+  if (m.includes('trust') || m.includes('score')) return AI_RESPONSES_SW.trust;
+  return AI_RESPONSES_SW.default;
+}
+
+const API_BASE = (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) || (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:5000';
+
+async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole) {
+  try {
+    const response = await fetch(`${API_BASE}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        lang,
+        role,
+      }),
+    });
+
+    if (!response.ok) throw new Error('AI chat request failed');
+    const data = await response.json();
+    return (data?.data?.reply || data?.reply || '').toString();
+  } catch {
+    return '';
+  }
+}
+
+async function fetchVoiceAudio(text: string, lang: ChatLang) {
+  try {
+    const response = await fetch(`${API_BASE}/api/ai/voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang }),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const payload = data?.data || data;
+    const audioBase64 = payload?.audioBase64 || payload?.audio;
+    const audioMimeType = payload?.audioMimeType || 'audio/mpeg';
+
+    if (!audioBase64) return null;
+    return {
+      audioBase64: String(audioBase64),
+      audioMimeType: String(audioMimeType),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function speakWithBrowserTts(text: string, lang: ChatLang) {
+  if (!('speechSynthesis' in window)) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang === 'sw' ? 'sw-KE' : 'en-KE';
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
+async function playBase64Audio(audioBase64: string, audioMimeType: string) {
+  const src = `data:${audioMimeType};base64,${audioBase64}`;
+  const audio = new Audio(src);
+  await audio.play();
+}
+
 function now() {
   return new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'admin' }) {
+export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
   const [open, setOpen] = useState(false);
+  const [lang, setLang] = useState<ChatLang>('en');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [listening, setListening] = useState(false);
+  const [unread, setUnread] = useState(0);
   const [msgs, setMsgs] = useState<ChatMsg[]>([
-    { from: 'ai', text: role === 'admin'
-        ? "Hello Admin. I'm your SafiriConnect AI Platform Guardian. Ask me about fraud alerts, booking anomalies, revenue trends, or platform health."
-        : "Hi there! 👋 I'm your SafiriConnect AI travel assistant. Ask me anything — trips, fares, bookings, or your trust score.",
-      time: now() },
+    {
+      from: 'ai',
+      text:
+        role === 'admin'
+          ? "Hello Admin. I'm your SafiriConnect AI Platform Guardian. Ask me about fraud alerts, booking anomalies, revenue trends, or platform health."
+          : "Hi there! 👋 I'm your SafiriConnect AI travel assistant. Ask me anything — trips, fares, bookings, or your trust score.",
+      time: now(),
+    },
   ]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
-  const bottomRef = useState<HTMLDivElement | null>(null);
+  const lastAiIndexRef = useRef(0);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const send = (text: string) => {
+  useEffect(() => {
+    if (open) {
+      setUnread(0);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [msgs, typing, open]);
+
+  useEffect(() => {
+    const lastAiIdx = msgs
+      .map((m, idx) => ({ m, idx }))
+      .reverse()
+      .find((item) => item.m.from === 'ai')?.idx ?? -1;
+
+    if (lastAiIdx > lastAiIndexRef.current && !open) {
+      setUnread((prev) => Math.min(prev + 1, 9));
+    }
+
+    lastAiIndexRef.current = lastAiIdx;
+  }, [msgs, open]);
+
+  const speakReply = async (replyText: string) => {
+    if (!voiceEnabled) return;
+
+    const premium = await fetchVoiceAudio(replyText, lang);
+    if (premium) {
+      try {
+        await playBase64Audio(premium.audioBase64, premium.audioMimeType);
+        return;
+      } catch {
+        // Fall through to browser TTS
+      }
+    }
+
+    speakWithBrowserTts(replyText, lang);
+  };
+
+  const startListening = () => {
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    const rec = new Recognition();
+    rec.lang = lang === 'sw' ? 'sw-KE' : 'en-KE';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    setListening(true);
+    rec.onresult = (event: any) => {
+      const transcript = event?.results?.[0]?.[0]?.transcript || '';
+      if (transcript) {
+        setInput(String(transcript));
+      }
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    rec.start();
+  };
+
+  const send = async (text: string) => {
     if (!text.trim()) return;
-    const userMsg: ChatMsg = { from: 'user', text: text.trim(), time: now() };
-    setMsgs(m => [...m, userMsg]);
+    const raw = text.trim();
+    const userMsg: ChatMsg = { from: 'user', text: raw, time: now() };
+    setMsgs((m) => [...m, userMsg]);
     setInput('');
     setTyping(true);
+
+    const backendReply = await fetchAiReply(raw, lang, role);
+    const reply = backendReply || getAiReplyByLang(raw, lang);
+
     setTimeout(() => {
       setTyping(false);
-      setMsgs(m => [...m, { from: 'ai', text: getAiReply(text), time: now() }]);
-    }, 900);
+      setMsgs((m) => [...m, { from: 'ai', text: reply, time: now() }]);
+      void speakReply(reply);
+    }, 700);
   };
 
   return (
@@ -420,7 +668,7 @@ export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'adm
       {/* Floating button */}
       <button
         className={`float-chat-btn${open ? ' open' : ''}`}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         title="AI Assistant"
         aria-label="Open AI chat assistant"
       >
@@ -433,7 +681,11 @@ export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'adm
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <span className="float-chat-badge">AI</span>
+            {unread > 0 ? (
+              <span className="float-chat-unread">{unread}</span>
+            ) : (
+              <span className="float-chat-badge">AI</span>
+            )}
           </>
         )}
       </button>
@@ -451,6 +703,18 @@ export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'adm
               <div className="float-chat-status">
                 <span className="float-chat-dot" /> Online · powered by AI agent
               </div>
+            </div>
+            <div className="float-chat-tools">
+              <div className="float-chat-lang">
+                <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
+                <button className={lang === 'sw' ? 'active' : ''} onClick={() => setLang('sw')}>SW</button>
+              </div>
+              <button className={`float-chat-tool-btn${voiceEnabled ? ' active' : ''}`} onClick={() => setVoiceEnabled((v) => !v)} title="Toggle voice replies">
+                {voiceEnabled ? '🔊' : '🔇'}
+              </button>
+              <button className={`float-chat-tool-btn${listening ? ' active' : ''}`} onClick={startListening} title="Voice input">
+                {listening ? '🎙️' : '🎤'}
+              </button>
             </div>
             <button className="float-chat-close" onClick={() => setOpen(false)}>✕</button>
           </div>
@@ -474,13 +738,13 @@ export function FloatingChat({ role = 'passenger' }: { role?: 'passenger' | 'adm
                 </div>
               </div>
             )}
-            <div ref={bottomRef[1]} />
+            <div ref={bottomRef} />
           </div>
 
           {/* Quick replies */}
           {msgs.length <= 2 && (
             <div className="float-quick-replies">
-              {QUICK_REPLIES.map(q => (
+              {(lang === 'en' ? QUICK_REPLIES : QUICK_REPLIES_SW).map((q) => (
                 <button key={q} className="float-quick-btn" onClick={() => send(q)}>{q}</button>
               ))}
             </div>

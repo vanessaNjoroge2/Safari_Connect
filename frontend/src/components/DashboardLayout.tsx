@@ -198,8 +198,8 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
           </div>
         </header>
 
-        {/* Floating AI Chat — passenger + admin only */}
-        {(user?.role === 'passenger' || user?.role === 'admin') && (
+        {/* Floating AI Chat — passenger + owner + admin */}
+        {(user?.role === 'passenger' || user?.role === 'owner' || user?.role === 'admin') && (
           <FloatingChat role={user.role} />
         )}
 
