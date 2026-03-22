@@ -978,6 +978,40 @@ p  { color: var(--gray-500); }
 }
 .float-chat-btn:hover { transform: scale(1.08); box-shadow: 0 12px 32px rgba(14,163,113,.55); }
 .float-chat-btn.open { background: var(--gray-700); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+/* ── Print styles ─────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .ticket-print-area,
+  .ticket-print-area * {
+    visibility: visible !important;
+  }
+
+  .ticket-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ticket-print-area .ticket {
+    max-width: 100%;
+    box-shadow: none;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
 .float-chat-badge {
   position: absolute; top: -4px; right: -4px;
   background: #f59e0b; color: #fff; font-size: 9px; font-weight: 800;
