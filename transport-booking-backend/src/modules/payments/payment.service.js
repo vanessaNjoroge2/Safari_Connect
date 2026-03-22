@@ -24,6 +24,10 @@ function createDemoReceipt() {
   return `DEMO${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
 }
 
+function shouldUseSafeDemoStkOnly() {
+  return Boolean(env.PAYMENT_DEMO_SAFE_STK_ONLY);
+}
+
 export const initiateBookingPayment = async (userId, payload) => {
   const { bookingId, phoneNumber } = payload;
 
@@ -60,28 +64,41 @@ export const initiateBookingPayment = async (userId, payload) => {
   }
 
   let stkResponse;
-  try {
-    stkResponse = await initiateStkPush({
-      amount: Number(booking.amount),
-      phoneNumber,
-      accountReference: booking.bookingCode,
-      transactionDesc: `${booking.trip.route.origin} to ${booking.trip.route.destination}`,
-    });
-  } catch (error) {
-    if (!env.PAYMENT_DEMO_STK_FALLBACK) {
-      throw error;
-    }
-
-    logWarn("payment.demo_stk_fallback", {
+  if (shouldUseSafeDemoStkOnly()) {
+    logWarn("payment.demo_safe_stk_only", {
       userId,
       bookingId,
-      reason: error?.message,
+      reason: "PAYMENT_DEMO_SAFE_STK_ONLY enabled",
     });
 
     stkResponse = createDemoStkResponse({
       phoneNumber,
       bookingCode: booking.bookingCode,
     });
+  } else {
+    try {
+      stkResponse = await initiateStkPush({
+        amount: Number(booking.amount),
+        phoneNumber,
+        accountReference: booking.bookingCode,
+        transactionDesc: `${booking.trip.route.origin} to ${booking.trip.route.destination}`,
+      });
+    } catch (error) {
+      if (!env.PAYMENT_DEMO_STK_FALLBACK) {
+        throw error;
+      }
+
+      logWarn("payment.demo_stk_fallback", {
+        userId,
+        bookingId,
+        reason: error?.message,
+      });
+
+      stkResponse = createDemoStkResponse({
+        phoneNumber,
+        bookingCode: booking.bookingCode,
+      });
+    }
   }
 
   const paymentData = {
@@ -93,8 +110,9 @@ export const initiateBookingPayment = async (userId, payload) => {
     checkoutRequestId: stkResponse.CheckoutRequestID,
     merchantRequestId: stkResponse.MerchantRequestID,
     status: "PENDING",
-    aiAnalysis:
-      "AI payment analysis: STK push initiated. Track callback outcome; keep booking in pending state until payment success is confirmed.",
+    aiAnalysis: shouldUseSafeDemoStkOnly()
+      ? "AI payment analysis: safe demo STK mode used. No real charge request was sent to external payment rails."
+      : "AI payment analysis: STK push initiated. Track callback outcome; keep booking in pending state until payment success is confirmed.",
   };
 
   let payment;
@@ -138,6 +156,7 @@ export const initiateBookingPayment = async (userId, payload) => {
     stkResponse,
     autoCompleted: env.PAYMENT_DEMO_AUTO_SUCCESS,
     simulated: Boolean(stkResponse?.simulated) || env.PAYMENT_DEMO_AUTO_SUCCESS,
+    safeDemoMode: shouldUseSafeDemoStkOnly(),
   };
 };
 
