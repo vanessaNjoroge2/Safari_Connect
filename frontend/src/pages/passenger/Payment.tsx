@@ -44,6 +44,21 @@ export default function Payment() {
       setPollingActive(true);
       toast('STK push sent. Complete payment on your phone.', 'info');
     } catch (error) {
+      try {
+        const fallback = await getPaymentStatusApi(booking.bookingId);
+        const payStatus = fallback.data.payment?.status;
+        if (payStatus === 'SUCCESS' || fallback.data.bookingStatus === 'CONFIRMED') {
+          confirmBooking(fallback.data.bookingCode, fallback.data.bookingId, fallback.data.bookingStatus);
+          setStatus('success');
+          setPollingActive(false);
+          toast('Payment already confirmed.', 'success');
+          setTimeout(() => navigate('/passenger/ticket'), 900);
+          return;
+        }
+      } catch {
+        // Ignore secondary failures and fall through to generic state.
+      }
+
       setPollingActive(false);
       setStatus('failed');
       toast((error as Error).message || 'Failed to initiate M-Pesa payment', 'error');

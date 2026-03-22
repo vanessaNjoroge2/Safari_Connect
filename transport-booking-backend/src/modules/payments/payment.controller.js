@@ -25,7 +25,7 @@ export const stkPush = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "STK push initiated",
+      message: "STK push sent successfully",
       data: result,
     });
   } catch (error) {

@@ -4,13 +4,14 @@ import { logWarn } from "../../utils/logger.js";
 import { env } from "../../config/env.js";
 
 function createDemoStkResponse({ phoneNumber, bookingCode }) {
+  const nonce = `${Date.now()}-${Math.floor(100000 + Math.random() * 900000)}`;
   const normalizedPhoneNumber = String(phoneNumber).replace(/\D/g, "").startsWith("254")
     ? String(phoneNumber).replace(/\D/g, "")
     : `254${String(phoneNumber).replace(/\D/g, "").replace(/^0/, "")}`;
 
   return {
-    MerchantRequestID: `DEMO-MERCHANT-${Date.now()}`,
-    CheckoutRequestID: `DEMO-CHECKOUT-${Date.now()}`,
+    MerchantRequestID: `DEMO-MERCHANT-${nonce}`,
+    CheckoutRequestID: `DEMO-CHECKOUT-${nonce}`,
     ResponseCode: "0",
     ResponseDescription: "Success. Demo STK push simulated",
     CustomerMessage: "Success. Demo STK push simulated",
