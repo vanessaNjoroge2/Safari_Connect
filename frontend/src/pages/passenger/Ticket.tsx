@@ -60,7 +60,9 @@ export default function Ticket() {
     : `${booking.passenger?.firstName ?? '-'} ${booking.passenger?.lastName ?? ''}`.trim();
   const passengerId = liveTicket?.nationalId || booking.passenger?.idNumber || '-';
   const saccoName = liveTicket?.trip?.sacco?.name || booking.selectedBus?.saccoName || '-';
-  const routeName = `${booking.searchQuery?.from ?? '-'} to ${booking.searchQuery?.to ?? '-'}`;
+  const routeName = liveTicket
+    ? `${liveTicket.trip?.route?.origin ?? '-'} to ${liveTicket.trip?.route?.destination ?? '-'}`
+    : `${booking.searchQuery?.from ?? '-'} to ${booking.searchQuery?.to ?? '-'}`;
   const tripDate = liveTicket
     ? new Date(liveTicket.trip.departureTime).toLocaleDateString('en-KE', {
         day: 'numeric',
@@ -89,11 +91,13 @@ export default function Ticket() {
 
   return (
     <DashboardLayout title="Booking confirmed" subtitle="Your e-ticket is ready">
-      <Steps steps={['Search', 'Results', 'Seat', 'Confirm', 'Payment', 'Ticket']} current={5} />
+      <div className="no-print">
+        <Steps steps={['Search', 'Results', 'Seat', 'Confirm', 'Payment', 'Ticket']} current={5} />
+      </div>
 
-      {loading && <p className="text-sm text-muted mb-3">Refreshing ticket details...</p>}
+      {loading && <p className="text-sm text-muted mb-3 no-print">Refreshing ticket details...</p>}
 
-      <div style={{ background: 'var(--brand-light)', border: '1px solid var(--brand-mid)', borderRadius: 'var(--r-lg)', padding: '14px 20px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div className="no-print" style={{ background: 'var(--brand-light)', border: '1px solid var(--brand-mid)', borderRadius: 'var(--r-lg)', padding: '14px 20px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 14 }}>
         <span className="ai-chip">Confirmed</span>
         <span style={{ fontSize: 14, color: 'var(--gray-700)' }}>
           <strong>Payment received.</strong> Your seat {liveTicket?.seat?.seatNumber ?? booking.selectedSeat ?? '-'} is reserved.
@@ -102,7 +106,8 @@ export default function Ticket() {
       </div>
 
       <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div className="ticket">
+        <div className="ticket-print-area">
+          <div className="ticket">
           <div className="ticket-head">
             <div className="ticket-brand">SafiriConnect · E-Ticket</div>
             <div className="ticket-route">{routeName}</div>
@@ -143,8 +148,9 @@ export default function Ticket() {
             <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 6 }}>{ref} · Present at boarding gate</div>
           </div>
         </div>
+        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 200 }}>
+        <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 200 }}>
           <button className="btn btn-primary" onClick={() => window.print()}>Print ticket</button>
           <button className="btn" onClick={() => navigate('/passenger/mybookings')}>View all bookings</button>
           <button
@@ -159,7 +165,7 @@ export default function Ticket() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 20 }}>
+      <div className="card no-print" style={{ marginTop: 20 }}>
         <div className="card-title">Travel GPS tracking</div>
         <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
           Route: {fromName} to {toName} · Tracker source: {gps.position.source === 'gps' ? 'Live GPS' : 'Simulated fallback'}

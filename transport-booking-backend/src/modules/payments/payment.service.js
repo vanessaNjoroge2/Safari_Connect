@@ -141,10 +141,26 @@ export const initiateBookingPayment = async (userId, payload) => {
       },
     });
 
+    const currentSnapshot = booking.ticketSnapshot && typeof booking.ticketSnapshot === "object"
+      ? booking.ticketSnapshot
+      : {};
+
     await prisma.booking.update({
       where: { id: booking.id },
       data: {
         status: "CONFIRMED",
+        ticketSnapshot: {
+          ...currentSnapshot,
+          payment: {
+            amount: payment.amount,
+            status: "SUCCESS",
+            transactionRef: payment.transactionRef,
+            method: payment.method,
+            phoneNumber: payment.phoneNumber,
+            updatedAt: new Date(),
+          },
+          confirmedAt: new Date(),
+        },
         aiAnalysis:
           "AI booking analysis: demo mode payment success applied immediately after STK acceptance.",
       },
@@ -193,18 +209,49 @@ export const processMpesaCallback = async (callbackPayload) => {
   });
 
   if (parsed.status === "SUCCESS") {
+    const currentSnapshot = payment.booking.ticketSnapshot && typeof payment.booking.ticketSnapshot === "object"
+      ? payment.booking.ticketSnapshot
+      : {};
+
     await prisma.booking.update({
       where: { id: payment.bookingId },
       data: {
         status: "CONFIRMED",
+        ticketSnapshot: {
+          ...currentSnapshot,
+          payment: {
+            amount: updatedPayment.amount,
+            status: "SUCCESS",
+            transactionRef: updatedPayment.transactionRef,
+            method: updatedPayment.method,
+            phoneNumber: updatedPayment.phoneNumber,
+            updatedAt: new Date(),
+          },
+          confirmedAt: new Date(),
+        },
         aiAnalysis:
           "AI booking analysis: payment success received. Booking promoted to confirmed and seat lock maintained.",
       },
     });
   } else {
+    const currentSnapshot = payment.booking.ticketSnapshot && typeof payment.booking.ticketSnapshot === "object"
+      ? payment.booking.ticketSnapshot
+      : {};
+
     await prisma.booking.update({
       where: { id: payment.bookingId },
       data: {
+        ticketSnapshot: {
+          ...currentSnapshot,
+          payment: {
+            amount: updatedPayment.amount,
+            status: parsed.status,
+            transactionRef: updatedPayment.transactionRef,
+            method: updatedPayment.method,
+            phoneNumber: updatedPayment.phoneNumber,
+            updatedAt: new Date(),
+          },
+        },
         aiAnalysis:
           "AI booking analysis: payment callback did not succeed. Booking remains non-confirmed pending retry or cancellation policy.",
       },

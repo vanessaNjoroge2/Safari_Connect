@@ -89,6 +89,8 @@ export const createBooking = async (userId, payload) => {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: {
+      route: true,
+      sacco: true,
       bus: {
         include: {
           seats: true,
@@ -137,6 +139,50 @@ export const createBooking = async (userId, payload) => {
     bookingCode = generateBookingCode();
   }
 
+  const ticketSnapshot = {
+    bookingCode,
+    passenger: {
+      firstName,
+      lastName,
+      email,
+      phone,
+      nationalId,
+      residence,
+    },
+    trip: {
+      route: {
+        origin: trip.route.origin,
+        destination: trip.route.destination,
+      },
+      sacco: {
+        id: trip.sacco.id,
+        name: trip.sacco.name,
+      },
+      bus: {
+        id: trip.bus.id,
+        name: trip.bus.name,
+        plateNumber: trip.bus.plateNumber,
+      },
+      departureTime: trip.departureTime,
+      arrivalTime: trip.arrivalTime,
+      tripType: trip.tripType,
+    },
+    seat: {
+      id: seat.id,
+      seatNumber: seat.seatNumber,
+      seatClass: seat.seatClass,
+      price: seat.price,
+    },
+    payment: {
+      amount: seat.price,
+      status: "PENDING",
+      transactionRef: null,
+      updatedAt: new Date(),
+    },
+    issuedAt: new Date(),
+    version: 1,
+  };
+
   const booking = await prisma.booking.create({
     data: {
       userId,
@@ -150,6 +196,7 @@ export const createBooking = async (userId, payload) => {
       nationalId,
       residence,
       amount: seat.price,
+      ticketSnapshot,
       status: "PENDING",
       aiAnalysis:
         "AI booking analysis: booking created in pending state. Risk posture is normal; awaiting payment confirmation before seat lock upgrade to confirmed.",

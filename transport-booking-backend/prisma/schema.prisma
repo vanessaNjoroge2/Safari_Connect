@@ -254,6 +254,7 @@ model Booking {
   nationalId      String
   residence       String?
   amount          Decimal        @db.Decimal(10, 2)
+  ticketSnapshot  Json?
   aiAnalysis      String?
   status          BookingStatus  @default(PENDING)
   createdAt       DateTime       @default(now())

@@ -137,6 +137,74 @@ test("stk push demo flow auto-confirms payment without callback verification", a
   }
 });
 
+test("booking creation persists ticket snapshot in database", async () => {
+  const { server, baseUrl } = await startTestServer();
+
+  try {
+    const token = await loginAs(baseUrl, {
+      email: "clifford@example.com",
+      password: "Password123!",
+    });
+
+    const user = await prisma.user.findUnique({ where: { email: "clifford@example.com" } });
+    assert.ok(user, "expected demo user");
+
+    const trip = await prisma.trip.findFirst({
+      where: { status: "SCHEDULED" },
+      include: {
+        route: true,
+        sacco: true,
+        bus: { include: { seats: true } },
+        bookings: {
+          where: { status: { in: ["PENDING", "CONFIRMED"] } },
+          select: { seatId: true },
+        },
+      },
+      orderBy: { departureTime: "asc" },
+    });
+
+    assert.ok(trip, "expected scheduled trip");
+    const bookedSeatIds = new Set(trip.bookings.map((b) => b.seatId));
+    const freeSeat = trip.bus.seats.find((s) => !bookedSeatIds.has(s.id));
+    assert.ok(freeSeat, "expected at least one free seat");
+
+    const createRes = await requestJson(baseUrl, "/api/bookings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tripId: trip.id,
+        seatId: freeSeat.id,
+        firstName: "Snapshot",
+        lastName: "Tester",
+        email: "snapshot.tester@example.com",
+        phone: "0712345678",
+        nationalId: "12345670",
+        residence: "Nairobi",
+      }),
+    });
+
+    assert.equal(createRes.status, 201);
+    const bookingId = createRes.body?.data?.id;
+    assert.ok(bookingId, "expected booking id");
+
+    const savedBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    assert.ok(savedBooking, "expected saved booking");
+    assert.ok(savedBooking.ticketSnapshot, "expected ticket snapshot to be persisted");
+
+    const snapshot = savedBooking.ticketSnapshot;
+    assert.equal(snapshot?.passenger?.firstName, "Snapshot");
+    assert.equal(snapshot?.trip?.route?.origin, trip.route.origin);
+    assert.equal(snapshot?.trip?.route?.destination, trip.route.destination);
+    assert.equal(snapshot?.seat?.seatNumber, freeSeat.seatNumber);
+    assert.equal(snapshot?.payment?.status, "PENDING");
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
 test.after(async () => {
   await prisma.$disconnect();
 });
