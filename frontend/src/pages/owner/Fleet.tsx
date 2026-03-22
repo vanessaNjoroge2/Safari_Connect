@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { Modal } from '../../components/UI';
-import { createOwnerBusApi, createOwnerBusSeatsApi, getOwnerBusesApi } from '../../lib/api';
+import {
+  createOwnerBusApi,
+  createOwnerBusSeatsApi,
+  deleteOwnerBusApi,
+  getOwnerBusesApi,
+  updateOwnerBusApi,
+} from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
 
 type VehicleForm = {
@@ -27,8 +33,12 @@ export default function OwnerFleet() {
     isActive: boolean;
   }>>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<VehicleForm>(INITIAL_FORM);
+  const [editingBusId, setEditingBusId] = useState<string | null>(null);
   const [seatSetupOpen, setSeatSetupOpen] = useState(false);
   const [seatSetupBus, setSeatSetupBus] = useState<null | {
     id: string;
@@ -66,6 +76,21 @@ export default function OwnerFleet() {
   const openCreateModal = () => {
     setForm(INITIAL_FORM);
     setCreateOpen(true);
+  };
+
+  const openEditModal = (vehicle: {
+    id: string;
+    name: string;
+    plateNumber: string;
+    seatCapacity: number;
+  }) => {
+    setEditingBusId(vehicle.id);
+    setForm({
+      name: vehicle.name,
+      plateNumber: vehicle.plateNumber,
+      seatCapacity: String(vehicle.seatCapacity),
+    });
+    setEditOpen(true);
   };
 
   const handleCreateVehicle = async () => {
@@ -136,6 +161,54 @@ export default function OwnerFleet() {
     return seats;
   };
 
+  const handleSaveEdit = async () => {
+    if (!editingBusId) return;
+
+    const name = form.name.trim();
+    const plateNumber = form.plateNumber.trim().toUpperCase();
+    const seatCapacity = Number(form.seatCapacity);
+
+    if (!name || !plateNumber || !seatCapacity || !Number.isInteger(seatCapacity) || seatCapacity < 1) {
+      toast('Provide vehicle name, plate number, and valid seat capacity', 'warning');
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      await updateOwnerBusApi(editingBusId, {
+        name,
+        plateNumber,
+        seatCapacity,
+      });
+
+      toast('Vehicle updated successfully', 'success');
+      setEditOpen(false);
+      setEditingBusId(null);
+      setForm(INITIAL_FORM);
+      await loadFleet(true);
+    } catch (error) {
+      toast((error as Error).message || 'Failed to update vehicle', 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteVehicle = async (vehicle: {
+    id: string;
+    name: string;
+  }) => {
+    setDeletingId(vehicle.id);
+    try {
+      await deleteOwnerBusApi(vehicle.id);
+      toast(`Vehicle ${vehicle.name} deleted`, 'success');
+      await loadFleet(true);
+    } catch (error) {
+      toast((error as Error).message || 'Failed to delete vehicle', 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleSetupSeats = async () => {
     if (!seatSetupBus) return;
     setSettingUpSeats(true);
@@ -171,6 +244,7 @@ export default function OwnerFleet() {
                   <th>Plate</th>
                   <th>Seat capacity</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,6 +254,18 @@ export default function OwnerFleet() {
                     <td style={{ fontFamily: 'monospace' }}>{vehicle.plateNumber}</td>
                     <td>{vehicle.seatCapacity}</td>
                     <td>{vehicle.isActive ? 'Active' : 'Inactive'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm" onClick={() => openEditModal(vehicle)}>Edit</button>
+                        <button
+                          className="btn btn-sm"
+                          disabled={deletingId === vehicle.id}
+                          onClick={() => void handleDeleteVehicle(vehicle)}
+                        >
+                          {deletingId === vehicle.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -273,6 +359,42 @@ export default function OwnerFleet() {
 
         <button className="btn btn-primary btn-full btn-lg" disabled={settingUpSeats} onClick={() => void handleSetupSeats()}>
           {settingUpSeats ? 'Configuring seats...' : 'Generate seat layout ->'}
+        </button>
+      </Modal>
+
+      <Modal open={editOpen} onClose={() => !savingEdit && setEditOpen(false)} title="Edit vehicle" width={560}>
+        <div className="form-group">
+          <label className="form-label">Vehicle name</label>
+          <input
+            className="input"
+            value={form.name}
+            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+          />
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Plate number</label>
+            <input
+              className="input"
+              value={form.plateNumber}
+              onChange={(e) => setForm((p) => ({ ...p, plateNumber: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Seat capacity</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={form.seatCapacity}
+              onChange={(e) => setForm((p) => ({ ...p, seatCapacity: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <button className="btn btn-primary btn-full btn-lg" disabled={savingEdit} onClick={() => void handleSaveEdit()}>
+          {savingEdit ? 'Saving changes...' : 'Save vehicle changes ->'}
         </button>
       </Modal>
     </DashboardLayout>

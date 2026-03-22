@@ -31,8 +31,9 @@ export default function AdminSettings() {
       const response = await updateAdminSettingsApi(payload);
       setSettings(response.data);
       toast(successMessage, 'success');
-    } catch (error: any) {
-      toast(error?.message || 'Failed to update settings', 'error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update settings';
+      toast(message, 'error');
     }
   };
 
@@ -48,6 +49,7 @@ export default function AdminSettings() {
     { key: 'smsBooking', label: 'SMS on booking confirmation' },
     { key: 'emailTicket', label: 'Email ticket delivery' },
     { key: 'pushDeparture', label: 'Push notification on departure' },
+    { key: 'pushNotifications', label: 'General push notifications' },
     { key: 'saccoRevenueReport', label: 'SACCO daily revenue report email' },
     { key: 'adminFraudAlert', label: 'Admin fraud alert email' },
   ];

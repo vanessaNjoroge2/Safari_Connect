@@ -4,6 +4,8 @@ import {
   searchTrips,
   getTripById,
   updateTripStatus,
+  updateTrip,
+  deleteTrip,
 } from "./trip.service.js";
 
 export const addTrip = async (req, res, next) => {
@@ -74,6 +76,34 @@ export const changeTripStatus = async (req, res, next) => {
       success: true,
       message: "Trip status updated successfully",
       data: trip,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTripHandler = async (req, res, next) => {
+  try {
+    const trip = await updateTrip(req.user.userId, req.params.tripId, req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: "Trip updated successfully",
+      data: trip,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTripHandler = async (req, res, next) => {
+  try {
+    const result = await deleteTrip(req.user.userId, req.params.tripId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Trip deleted successfully",
+      data: result,
     });
   } catch (error) {
     next(error);

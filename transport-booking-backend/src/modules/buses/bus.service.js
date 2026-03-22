@@ -202,3 +202,150 @@ export const setBusActiveState = async (userId, busId, isActive) => {
     data: { isActive: Boolean(isActive) },
   });
 };
+
+export const deleteBus = async (userId, busId) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const bus = await prisma.bus.findFirst({
+    where: {
+      id: busId,
+      saccoId: ownerProfile.sacco.id,
+    },
+  });
+
+  if (!bus) {
+    throw new Error("Bus not found");
+  }
+
+  const linkedTrips = await prisma.trip.count({ where: { busId } });
+  if (linkedTrips > 0) {
+    throw new Error("Cannot delete bus with existing trips. Set it inactive instead.");
+  }
+
+  await prisma.seat.deleteMany({ where: { busId } });
+  await prisma.bus.delete({ where: { id: busId } });
+
+  return { id: busId };
+};
+
+export const replaceSeatsForBus = async (userId, busId, seats) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const bus = await prisma.bus.findFirst({
+    where: {
+      id: busId,
+      saccoId: ownerProfile.sacco.id,
+    },
+  });
+
+  if (!bus) {
+    throw new Error("Bus not found");
+  }
+
+  if (!Array.isArray(seats) || seats.length === 0) {
+    throw new Error("At least one seat is required");
+  }
+
+  if (seats.length > bus.seatCapacity) {
+    throw new Error("Seats exceed bus capacity");
+  }
+
+  const relatedTripIds = (
+    await prisma.trip.findMany({
+      where: { busId },
+      select: { id: true },
+    })
+  ).map((trip) => trip.id);
+
+  if (relatedTripIds.length > 0) {
+    const bookingCount = await prisma.booking.count({
+      where: {
+        tripId: { in: relatedTripIds },
+      },
+    });
+
+    if (bookingCount > 0) {
+      throw new Error("Cannot change seats for buses with existing bookings");
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.seat.deleteMany({ where: { busId } });
+
+    if (seats.length === 0) {
+      return [];
+    }
+
+    await tx.seat.createMany({
+      data: seats.map((seat) => ({
+        busId,
+        seatNumber: seat.seatNumber,
+        seatClass: seat.seatClass,
+        price: seat.price,
+      })),
+    });
+
+    return tx.seat.findMany({
+      where: { busId },
+      orderBy: { seatNumber: "asc" },
+    });
+  });
+};
+
+export const deleteSeatsForBus = async (userId, busId) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const bus = await prisma.bus.findFirst({
+    where: {
+      id: busId,
+      saccoId: ownerProfile.sacco.id,
+    },
+  });
+
+  if (!bus) {
+    throw new Error("Bus not found");
+  }
+
+  const relatedTripIds = (
+    await prisma.trip.findMany({
+      where: { busId },
+      select: { id: true },
+    })
+  ).map((trip) => trip.id);
+
+  if (relatedTripIds.length > 0) {
+    const bookingCount = await prisma.booking.count({
+      where: {
+        tripId: { in: relatedTripIds },
+      },
+    });
+
+    if (bookingCount > 0) {
+      throw new Error("Cannot delete seats for buses with existing bookings");
+    }
+  }
+
+  const deleted = await prisma.seat.deleteMany({ where: { busId } });
+  return { id: busId, deletedCount: deleted.count };
+};

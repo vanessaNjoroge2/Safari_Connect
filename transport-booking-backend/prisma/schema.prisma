@@ -56,6 +56,54 @@ enum PaymentMethod {
   CARD
 }
 
+enum SupportTicketStatus {
+  OPEN
+  IN_REVIEW
+  ESCALATED
+  RESOLVED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SupportTicketCategory {
+  BOOKING
+  PAYMENT
+  DISPUTE
+  APP_BUG
+  GENERAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum NotificationTargetRole {
+  ADMIN
+  OWNER
+  USER
+  ALL
+}
+
+enum NotificationStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+enum HelpArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model User {
   id           String        @id @default(uuid())
   firstName    String
@@ -242,4 +290,81 @@ model Payment {
 
   @@index([userId])
   @@index([status])
+}
+
+model PlatformSetting {
+  id                    String   @id @default("default")
+  commissionRate        Int      @default(5)
+  minimumFare           Int      @default(50)
+  aiPricing             Boolean  @default(true)
+  fraudBlockThreshold   Int      @default(80)
+  delayRiskAlert        String   @default("medium")
+  voiceLanguages        String   @default("en-sw")
+  smsBooking            Boolean  @default(true)
+  emailTicket           Boolean  @default(true)
+  pushDeparture         Boolean  @default(true)
+  pushNotifications     Boolean  @default(true)
+  saccoRevenueReport    Boolean  @default(false)
+  adminFraudAlert       Boolean  @default(true)
+  sessionTimeoutMinutes Int      @default(60)
+  maxFailedLogins       Int      @default(5)
+  require2fa            Boolean  @default(true)
+  version               String   @default("3.0.0")
+  environment           String   @default("Production")
+  build                 String   @default("20260319")
+  apiStatus             String   @default("Operational")
+  updatedAt             DateTime @updatedAt
+}
+
+model SupportTicket {
+  id          String               @id @default(uuid())
+  ticketCode  String               @unique
+  subject     String
+  userName    String
+  category    SupportTicketCategory
+  priority    SupportTicketPriority
+  status      SupportTicketStatus  @default(OPEN)
+  assignedTo  String?
+  description String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model AdminNotification {
+  id          String                 @id @default(uuid())
+  title       String
+  message     String
+  channel     NotificationChannel
+  targetRole  NotificationTargetRole @default(ALL)
+  status      NotificationStatus     @default(DRAFT)
+  scheduledFor DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([status])
+  @@index([channel])
+  @@index([targetRole])
+  @@index([createdAt])
+}
+
+model HelpArticle {
+  id            String            @id @default(uuid())
+  title         String
+  slug          String            @unique
+  category      String
+  content       String
+  status        HelpArticleStatus @default(PUBLISHED)
+  isAiGenerated Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
 }

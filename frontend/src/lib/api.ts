@@ -353,6 +353,55 @@ export async function getMyBookingsApi() {
   return apiRequest<MyBookingsEnvelope>('/api/bookings/me');
 }
 
+export type PortalNotificationsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    title: string;
+    message: string;
+    channel: 'In App' | 'Email' | 'Sms' | 'Push';
+    targetRole: 'ADMIN' | 'OWNER' | 'USER' | 'ALL';
+    status: 'Draft' | 'Scheduled' | 'Sent' | 'Cancelled';
+    scheduledFor: string | null;
+    sentAt: string | null;
+    createdAt: string;
+  }>;
+};
+
+export async function getPortalNotificationsApi(params?: { q?: string; limit?: number }) {
+  const search = new URLSearchParams();
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<PortalNotificationsEnvelope>(`/api/portal/notifications${query ? `?${query}` : ''}`);
+}
+
+export type PortalHelpEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    category: string;
+    content: string;
+    status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+    isAiGenerated: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export async function getPortalHelpApi(params?: { q?: string; category?: string; limit?: number }) {
+  const search = new URLSearchParams();
+  if (params?.q) search.set('q', params.q);
+  if (params?.category) search.set('category', params.category);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<PortalHelpEnvelope>(`/api/portal/help${query ? `?${query}` : ''}`);
+}
+
 export type OwnerBusEnvelope = {
   success: boolean;
   message: string;
@@ -398,6 +447,22 @@ export async function getOwnerBusesApi() {
   return apiRequest<OwnerBusesEnvelope>('/api/buses/me');
 }
 
+export async function updateOwnerBusApi(
+  busId: string,
+  payload: Partial<{ name: string; plateNumber: string; seatCapacity: number }>
+) {
+  return apiRequest<OwnerBusEnvelope>(`/api/buses/${busId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteOwnerBusApi(busId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/buses/${busId}`, {
+    method: 'DELETE',
+  });
+}
+
 export type OwnerBusSeatsEnvelope = {
   success: boolean;
   message: string;
@@ -425,6 +490,26 @@ export async function createOwnerBusSeatsApi(
   return apiRequest<OwnerBusSeatsEnvelope>(`/api/buses/${busId}/seats`, {
     method: 'POST',
     body: { seats },
+  });
+}
+
+export async function updateOwnerBusSeatsApi(
+  busId: string,
+  seats: Array<{
+    seatNumber: string;
+    seatClass: 'VIP' | 'FIRST_CLASS' | 'BUSINESS';
+    price: number;
+  }>
+) {
+  return apiRequest<OwnerBusSeatsEnvelope>(`/api/buses/${busId}/seats`, {
+    method: 'PATCH',
+    body: { seats },
+  });
+}
+
+export async function deleteOwnerBusSeatsApi(busId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string; deletedCount: number } }>(`/api/buses/${busId}/seats`, {
+    method: 'DELETE',
   });
 }
 
@@ -483,6 +568,36 @@ export async function createOwnerTripApi(payload: {
   });
 }
 
+export async function updateOwnerTripApi(
+  tripId: string,
+  payload: Partial<{
+    busId: string;
+    routeId: string;
+    tripType: 'ONE_WAY' | 'ROUND_TRIP';
+    departureTime: string;
+    arrivalTime: string;
+    basePrice: number;
+  }>
+) {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/trips/${tripId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function updateOwnerTripStatusApi(tripId: string, status: 'SCHEDULED' | 'CANCELLED' | 'COMPLETED') {
+  return apiRequest<{ success: boolean; message: string; data: any }>(`/api/trips/${tripId}/status`, {
+    method: 'PATCH',
+    body: { status },
+  });
+}
+
+export async function deleteOwnerTripApi(tripId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/trips/${tripId}`, {
+    method: 'DELETE',
+  });
+}
+
 export type RoutesEnvelope = {
   success: boolean;
   message: string;
@@ -497,6 +612,34 @@ export type RoutesEnvelope = {
 
 export async function getRoutesApi() {
   return apiRequest<RoutesEnvelope>('/api/routes');
+}
+
+export async function createRouteApi(payload: {
+  origin: string;
+  destination: string;
+  distanceKm?: number;
+  estimatedTime?: number;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: RoutesEnvelope['data'][number] }>('/api/routes', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateRouteApi(
+  routeId: string,
+  payload: Partial<{ origin: string; destination: string; distanceKm: number; estimatedTime: number }>
+) {
+  return apiRequest<{ success: boolean; message: string; data: RoutesEnvelope['data'][number] }>(`/api/routes/${routeId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteRouteApi(routeId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/routes/${routeId}`, {
+    method: 'DELETE',
+  });
 }
 
 export type CategoriesEnvelope = {
@@ -734,14 +877,32 @@ export type AdminAnalyticsEnvelope = {
   success: boolean;
   message: string;
   data: {
+    range: '6m' | '30d' | 'ytd';
+    periodLabel: string;
+    generatedAt: string;
+    windowStart: string;
+    windowEnd: string;
+    kpis: {
+      grossRevenue: number;
+      totalBookings: number;
+      activeSaccos: number;
+      platformCommission: number;
+      avgFare: number;
+      refundRate: number;
+      newUsers: number;
+      repeatBookingRate: number;
+    };
     months: Array<{ month: string; revenue: number; bookings: number }>;
     topRoutes: Array<{ route: string; bookings: number; revenue: number }>;
     topSaccos: Array<{ name: string; revenue: number; bookings: number }>;
   };
 };
 
-export async function getAdminAnalyticsApi() {
-  return apiRequest<AdminAnalyticsEnvelope>('/api/admins/analytics');
+export async function getAdminAnalyticsApi(params?: { range?: '6m' | '30d' | 'ytd' }) {
+  const search = new URLSearchParams();
+  if (params?.range) search.set('range', params.range);
+  const query = search.toString();
+  return apiRequest<AdminAnalyticsEnvelope>(`/api/admins/analytics${query ? `?${query}` : ''}`);
 }
 
 export type AdminSupportEnvelope = {
@@ -749,6 +910,7 @@ export type AdminSupportEnvelope = {
   message: string;
   data: Array<{
     id: string;
+    ticketCode: string;
     subject: string;
     user: string;
     category: string;
@@ -756,11 +918,38 @@ export type AdminSupportEnvelope = {
     priority: string;
     status: string;
     assignedTo: string;
+    description: string;
   }>;
 };
 
-export async function getAdminSupportApi() {
-  return apiRequest<AdminSupportEnvelope>('/api/admins/support');
+export async function getAdminSupportApi(params?: {
+  status?: 'OPEN' | 'IN_REVIEW' | 'ESCALATED' | 'RESOLVED';
+  category?: 'BOOKING' | 'PAYMENT' | 'DISPUTE' | 'APP_BUG' | 'GENERAL';
+  q?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status) search.set('status', params.status);
+  if (params?.category) search.set('category', params.category);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminSupportEnvelope>(`/api/admins/support${query ? `?${query}` : ''}`);
+}
+
+export async function createAdminSupportApi(payload: {
+  subject: string;
+  user: string;
+  category?: 'BOOKING' | 'PAYMENT' | 'DISPUTE' | 'APP_BUG' | 'GENERAL';
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  status?: 'OPEN' | 'IN_REVIEW' | 'ESCALATED' | 'RESOLVED';
+  assignedTo?: string;
+  description?: string;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: AdminSupportEnvelope['data'][number] }>('/api/admins/support', {
+    method: 'POST',
+    body: payload,
+  });
 }
 
 export type AdminSettingsEnvelope = {
@@ -777,6 +966,7 @@ export type AdminSettingsEnvelope = {
       smsBooking: boolean;
       emailTicket: boolean;
       pushDeparture: boolean;
+      pushNotifications: boolean;
       saccoRevenueReport: boolean;
       adminFraudAlert: boolean;
     };
@@ -803,10 +993,148 @@ export async function updateAdminSettingsApi(payload: Partial<AdminSettingsEnvel
   });
 }
 
-export async function updateAdminTicketApi(ticketId: string, payload: { status: string }) {
+export async function updateAdminTicketApi(ticketId: string, payload: Partial<{
+  status: 'OPEN' | 'IN_REVIEW' | 'ESCALATED' | 'RESOLVED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  category: 'BOOKING' | 'PAYMENT' | 'DISPUTE' | 'APP_BUG' | 'GENERAL';
+  subject: string;
+  user: string;
+  assignedTo: string;
+  description: string;
+}>) {
   return apiRequest<{ success: boolean; message: string; data: any }>(`/api/admins/support/${ticketId}`, {
     method: 'PATCH',
     body: payload,
+  });
+}
+
+export async function deleteAdminTicketApi(ticketId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/admins/support/${ticketId}`, {
+    method: 'DELETE',
+  });
+}
+
+export type AdminNotificationsEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    title: string;
+    message: string;
+    channel: 'In App' | 'Email' | 'Sms' | 'Push';
+    targetRole: 'ADMIN' | 'OWNER' | 'USER' | 'ALL';
+    status: 'Draft' | 'Scheduled' | 'Sent' | 'Cancelled';
+    scheduledFor: string | null;
+    sentAt: string | null;
+    createdAt: string;
+  }>;
+};
+
+export async function getAdminNotificationsApi(params?: {
+  status?: 'DRAFT' | 'SCHEDULED' | 'SENT' | 'CANCELLED';
+  channel?: 'IN_APP' | 'EMAIL' | 'SMS' | 'PUSH';
+  targetRole?: 'ADMIN' | 'OWNER' | 'USER' | 'ALL';
+  q?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.status) search.set('status', params.status);
+  if (params?.channel) search.set('channel', params.channel);
+  if (params?.targetRole) search.set('targetRole', params.targetRole);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminNotificationsEnvelope>(`/api/admins/notifications${query ? `?${query}` : ''}`);
+}
+
+export async function createAdminNotificationApi(payload: {
+  title: string;
+  message: string;
+  channel: 'IN_APP' | 'EMAIL' | 'SMS' | 'PUSH';
+  targetRole?: 'ADMIN' | 'OWNER' | 'USER' | 'ALL';
+  status?: 'DRAFT' | 'SCHEDULED' | 'SENT' | 'CANCELLED';
+  scheduledFor?: string | null;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: AdminNotificationsEnvelope['data'][number] }>('/api/admins/notifications', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateAdminNotificationApi(notificationId: string, payload: Partial<{
+  title: string;
+  message: string;
+  channel: 'IN_APP' | 'EMAIL' | 'SMS' | 'PUSH';
+  targetRole: 'ADMIN' | 'OWNER' | 'USER' | 'ALL';
+  status: 'DRAFT' | 'SCHEDULED' | 'SENT' | 'CANCELLED';
+  scheduledFor: string | null;
+}>) {
+  return apiRequest<{ success: boolean; message: string; data: AdminNotificationsEnvelope['data'][number] }>(`/api/admins/notifications/${notificationId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteAdminNotificationApi(notificationId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/admins/notifications/${notificationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export type AdminHelpEnvelope = {
+  success: boolean;
+  message: string;
+  data: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    category: string;
+    content: string;
+    status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+    isAiGenerated: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+};
+
+export async function getAdminHelpApi(params?: { status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'; q?: string; limit?: number }) {
+  const search = new URLSearchParams();
+  if (params?.status) search.set('status', params.status);
+  if (params?.q) search.set('q', params.q);
+  if (params?.limit) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return apiRequest<AdminHelpEnvelope>(`/api/admins/help${query ? `?${query}` : ''}`);
+}
+
+export async function createAdminHelpApi(payload: {
+  title: string;
+  category: string;
+  content: string;
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  isAiGenerated?: boolean;
+}) {
+  return apiRequest<{ success: boolean; message: string; data: AdminHelpEnvelope['data'][number] }>('/api/admins/help', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function updateAdminHelpApi(helpId: string, payload: Partial<{
+  title: string;
+  category: string;
+  content: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  isAiGenerated: boolean;
+}>) {
+  return apiRequest<{ success: boolean; message: string; data: AdminHelpEnvelope['data'][number] }>(`/api/admins/help/${helpId}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteAdminHelpApi(helpId: string) {
+  return apiRequest<{ success: boolean; message: string; data: { id: string } }>(`/api/admins/help/${helpId}`, {
+    method: 'DELETE',
   });
 }
 

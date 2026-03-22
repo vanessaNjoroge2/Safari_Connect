@@ -4,18 +4,24 @@ import DashboardLayout from '../../components/DashboardLayout';
 import { StatTile, ChartBar, AiBanner, AiAgentPanel } from '../../components/UI';
 import { Badge } from '../../components/UI';
 import { getAdminAnalyticsApi } from '../../lib/api';
+import type { AdminAnalyticsEnvelope } from '../../lib/api';
+import { buildAnalyticsCsv, formatKes, getRangeLabel } from './analytics.utils';
+
+type AnalyticsData = AdminAnalyticsEnvelope['data'];
+type AnalyticsRange = AnalyticsData['range'];
 
 export default function AdminAnalytics() {
   const nav = useNavigate();
-  const [aiSummary, setAiSummary] = useState('Analytics loaded.');
-  const [analytics, setAnalytics] = useState<{ months: Array<{ month: string; revenue: number; bookings: number }>; topRoutes: Array<{ route: string; bookings: number; revenue: number }>; topSaccos: Array<{ name: string; revenue: number; bookings: number }> } | null>(null);
+  const [aiSummary, setAiSummary] = useState('Loading analytics from live platform data...');
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<AnalyticsRange>('6m');
 
   const [aiCards, setAiCards] = useState([
     {
       type: 'Fraud Control',
       icon: '🛡️',
-      result: 'Awaiting analytics data',
+      result: 'Loading analytics data',
       detail: 'Load platform analytics to generate live fraud indicators.',
       confidence: 0,
       actionLabel: 'Open bookings',
@@ -25,7 +31,7 @@ export default function AdminAnalytics() {
     {
       type: 'Dispatch Optimizer',
       icon: '🚌',
-      result: 'Awaiting analytics data',
+      result: 'Loading analytics data',
       detail: 'Load platform analytics to evaluate dispatch pressure.',
       confidence: 0,
       actionLabel: 'Open routes',
@@ -35,7 +41,7 @@ export default function AdminAnalytics() {
     {
       type: 'Pricing Intelligence',
       icon: '📈',
-      result: 'Awaiting analytics data',
+      result: 'Loading analytics data',
       detail: 'Load platform analytics to project pricing insights.',
       confidence: 0,
       actionLabel: 'View trends',
@@ -55,7 +61,7 @@ export default function AdminAnalytics() {
     const run = async () => {
       setLoading(true);
       try {
-        const response = await getAdminAnalyticsApi();
+        const response = await getAdminAnalyticsApi({ range });
         if (mounted) setAnalytics(response.data);
       } finally {
         if (mounted) setLoading(false);
@@ -66,27 +72,27 @@ export default function AdminAnalytics() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     if (!analytics) return;
 
-    const totalRevenue = analytics.months.reduce((sum, m) => sum + m.revenue, 0);
-    const totalBookings = analytics.months.reduce((sum, m) => sum + m.bookings, 0);
+    const totalRevenue = analytics.kpis.grossRevenue;
+    const totalBookings = analytics.kpis.totalBookings;
     const topRoute = analytics.topRoutes[0];
     const topSacco = analytics.topSaccos[0];
 
     setAiSummary(
       topRoute
-        ? `Top route is ${topRoute.route} with ${topRoute.bookings} bookings. Total revenue across 6 months is KES ${Math.round(totalRevenue * 1_000_000).toLocaleString()}.`
-        : `Analytics loaded. Total revenue across 6 months is KES ${Math.round(totalRevenue * 1_000_000).toLocaleString()}.`
+        ? `Top route is ${topRoute.route} with ${topRoute.bookings} bookings. Revenue in ${analytics.periodLabel.toLowerCase()} is ${formatKes(totalRevenue)}.`
+        : `Analytics loaded. Revenue in ${analytics.periodLabel.toLowerCase()} is ${formatKes(totalRevenue)}.`
     );
 
     setAiCards([
       {
         type: 'Fraud Control',
         icon: '🛡️',
-        result: `${totalBookings} bookings analysed`,
+        result: `${totalBookings.toLocaleString()} bookings analysed`,
         detail: 'Review bookings and failed payments for anomalies based on live platform data.',
         confidence: totalBookings ? 82 : 0,
         actionLabel: 'Review bookings',
@@ -110,7 +116,7 @@ export default function AdminAnalytics() {
         icon: '📈',
         result: topSacco ? `Top revenue: ${topSacco.name}` : 'Revenue data unavailable',
         detail: topSacco
-          ? `Top SACCO revenue is KES ${Math.round(topSacco.revenue).toLocaleString()}. Adjust pricing policies accordingly.`
+          ? `Top SACCO revenue is ${formatKes(topSacco.revenue)}. Adjust pricing policies accordingly.`
           : 'No SACCO revenue data available to guide pricing.',
         confidence: topSacco ? 78 : 0,
         actionLabel: 'View payments',
@@ -125,18 +131,40 @@ export default function AdminAnalytics() {
   const topSaccos = analytics?.topSaccos || [];
   const maxRouteBookings = Math.max(1, ...topRoutes.map((r) => r.bookings));
 
+  const exportCsv = () => {
+    if (!analytics) return;
+
+    const csv = buildAnalyticsCsv(analytics);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `admin-analytics-${analytics.range}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <DashboardLayout
       title="Reports & Analytics"
       subtitle="Platform-wide performance metrics and revenue intelligence"
       actions={
         <div style={{ display: 'flex', gap: 8 }}>
-          <select className="input" style={{ fontSize: 13, padding: '6px 12px', height: 36, minWidth: 130 }}>
-            <option>Last 6 months</option>
-            <option>Last 30 days</option>
-            <option>This year</option>
+          <select
+            className="input"
+            style={{ fontSize: 13, padding: '6px 12px', height: 36, minWidth: 130 }}
+            value={range}
+            onChange={(e) => setRange(e.target.value as AnalyticsRange)}
+          >
+            <option value="6m">Last 6 months</option>
+            <option value="30d">Last 30 days</option>
+            <option value="ytd">This year</option>
           </select>
-          <button className="btn btn-primary btn-sm">Export CSV</button>
+          <button className="btn btn-primary btn-sm" onClick={exportCsv} disabled={loading || !analytics}>
+            Export CSV
+          </button>
         </div>
       }
     >
@@ -155,14 +183,14 @@ export default function AdminAnalytics() {
 
       {/* KPIs */}
       <div className="stat-grid" style={{ marginBottom: 28 }}>
-        <StatTile label="Gross Revenue (6 mo)" value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue, 0) * 1_000_000).toLocaleString()}`} />
-        <StatTile label="Total Bookings"       value={loading ? '...' : monthly.reduce((sum, m) => sum + m.bookings, 0).toLocaleString()} />
-        <StatTile label="Active SACCOs"        value={loading ? '...' : topSaccos.length.toLocaleString()} />
-        <StatTile label="Platform Commission"  value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue * 1_000_000, 0) * 0.05).toLocaleString()}`} />
-        <StatTile label="Avg Fare"             value={loading ? '...' : `KES ${Math.round(monthly.reduce((sum, m) => sum + m.revenue * 1_000_000, 0) / Math.max(1, monthly.reduce((sum, m) => sum + m.bookings, 0))).toLocaleString()}`} />
-        <StatTile label="Refund Rate"          value="—" sub="Awaiting refunds model" />
-        <StatTile label="New Users (Mar)"      value="—" sub="Awaiting user growth model" />
-        <StatTile label="Repeat Booking Rate"  value="—" sub="Awaiting cohort model" />
+        <StatTile label={`Gross Revenue (${analytics?.periodLabel || getRangeLabel(range)})`} value={loading ? '...' : formatKes(analytics?.kpis.grossRevenue || 0)} />
+        <StatTile label="Total Bookings" value={loading ? '...' : (analytics?.kpis.totalBookings || 0).toLocaleString()} />
+        <StatTile label="Active SACCOs" value={loading ? '...' : (analytics?.kpis.activeSaccos || 0).toLocaleString()} />
+        <StatTile label="Platform Commission" value={loading ? '...' : formatKes(analytics?.kpis.platformCommission || 0)} />
+        <StatTile label="Avg Fare" value={loading ? '...' : formatKes(analytics?.kpis.avgFare || 0)} />
+        <StatTile label="Refund Rate" value={loading ? '...' : `${(analytics?.kpis.refundRate || 0).toFixed(1)}%`} />
+        <StatTile label="New Users" value={loading ? '...' : (analytics?.kpis.newUsers || 0).toLocaleString()} />
+        <StatTile label="Repeat Booking Rate" value={loading ? '...' : `${(analytics?.kpis.repeatBookingRate || 0).toFixed(1)}%`} />
       </div>
 
       <div className="grid-2" style={{ gap: 20, marginBottom: 24 }}>
@@ -193,7 +221,7 @@ export default function AdminAnalytics() {
 
       {/* SACCO performance table */}
       <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>SACCO Revenue Breakdown — Mar 2026</div>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>SACCO Revenue Breakdown - {analytics?.periodLabel || getRangeLabel(range)}</div>
         <div className="table-wrap">
           <table className="sc-table">
             <thead>

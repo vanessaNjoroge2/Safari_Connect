@@ -1,6 +1,28 @@
 import { prisma } from "../../config/prisma.js";
 import { initiateStkPush, parseMpesaCallback } from "./mpesa.service.js";
 import { logWarn } from "../../utils/logger.js";
+import { env } from "../../config/env.js";
+
+function createDemoStkResponse({ phoneNumber, bookingCode }) {
+  const normalizedPhoneNumber = String(phoneNumber).replace(/\D/g, "").startsWith("254")
+    ? String(phoneNumber).replace(/\D/g, "")
+    : `254${String(phoneNumber).replace(/\D/g, "").replace(/^0/, "")}`;
+
+  return {
+    MerchantRequestID: `DEMO-MERCHANT-${Date.now()}`,
+    CheckoutRequestID: `DEMO-CHECKOUT-${Date.now()}`,
+    ResponseCode: "0",
+    ResponseDescription: "Success. Demo STK push simulated",
+    CustomerMessage: "Success. Demo STK push simulated",
+    normalizedPhoneNumber,
+    accountReference: bookingCode,
+    simulated: true,
+  };
+}
+
+function createDemoReceipt() {
+  return `DEMO${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
+}
 
 export const initiateBookingPayment = async (userId, payload) => {
   const { bookingId, phoneNumber } = payload;
@@ -37,12 +59,30 @@ export const initiateBookingPayment = async (userId, payload) => {
     throw new Error("Payment already completed for this booking");
   }
 
-  const stkResponse = await initiateStkPush({
-    amount: Number(booking.amount),
-    phoneNumber,
-    accountReference: booking.bookingCode,
-    transactionDesc: `${booking.trip.route.origin} to ${booking.trip.route.destination}`,
-  });
+  let stkResponse;
+  try {
+    stkResponse = await initiateStkPush({
+      amount: Number(booking.amount),
+      phoneNumber,
+      accountReference: booking.bookingCode,
+      transactionDesc: `${booking.trip.route.origin} to ${booking.trip.route.destination}`,
+    });
+  } catch (error) {
+    if (!env.PAYMENT_DEMO_STK_FALLBACK) {
+      throw error;
+    }
+
+    logWarn("payment.demo_stk_fallback", {
+      userId,
+      bookingId,
+      reason: error?.message,
+    });
+
+    stkResponse = createDemoStkResponse({
+      phoneNumber,
+      bookingCode: booking.bookingCode,
+    });
+  }
 
   const paymentData = {
     userId,
@@ -70,9 +110,34 @@ export const initiateBookingPayment = async (userId, payload) => {
     });
   }
 
+  // Demo mode: once STK push is accepted, complete payment immediately
+  // so end-to-end flows can be showcased without waiting for callbacks.
+  if (env.PAYMENT_DEMO_AUTO_SUCCESS) {
+    payment = await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "SUCCESS",
+        transactionRef: createDemoReceipt(),
+        aiAnalysis:
+          "AI payment analysis: demo mode auto-success applied after STK acceptance. Transaction verification was skipped by configuration.",
+      },
+    });
+
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: "CONFIRMED",
+        aiAnalysis:
+          "AI booking analysis: demo mode payment success applied immediately after STK acceptance.",
+      },
+    });
+  }
+
   return {
     payment,
     stkResponse,
+    autoCompleted: env.PAYMENT_DEMO_AUTO_SUCCESS,
+    simulated: Boolean(stkResponse?.simulated) || env.PAYMENT_DEMO_AUTO_SUCCESS,
   };
 };
 

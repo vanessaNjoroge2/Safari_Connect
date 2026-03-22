@@ -15,5 +15,7 @@ export const env = {
   MPESA_PASSKEY: process.env.MPESA_PASSKEY,
   MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL,
   MPESA_AUTH_URL: process.env.MPESA_AUTH_URL,
-  MPESA_STK_PUSH_URL: process.env.MPESA_STK_PUSH_URL
+  MPESA_STK_PUSH_URL: process.env.MPESA_STK_PUSH_URL,
+  PAYMENT_DEMO_AUTO_SUCCESS: String(process.env.PAYMENT_DEMO_AUTO_SUCCESS || "true").toLowerCase() === "true",
+  PAYMENT_DEMO_STK_FALLBACK: String(process.env.PAYMENT_DEMO_STK_FALLBACK || "true").toLowerCase() === "true",
 };

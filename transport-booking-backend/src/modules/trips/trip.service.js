@@ -363,3 +363,131 @@ export const updateTripStatus = async (userId, tripId, status) => {
     },
   });
 };
+
+export const updateTrip = async (userId, tripId, payload) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const trip = await prisma.trip.findFirst({
+    where: {
+      id: tripId,
+      saccoId: ownerProfile.sacco.id,
+    },
+    include: {
+      bookings: true,
+      route: true,
+    },
+  });
+
+  if (!trip) {
+    throw new Error("Trip not found");
+  }
+
+  const hasBookings = trip.bookings.length > 0;
+
+  if (payload.busId && payload.busId !== trip.busId && hasBookings) {
+    throw new Error("Cannot change bus for a trip with existing bookings");
+  }
+
+  if (payload.routeId && payload.routeId !== trip.routeId && hasBookings) {
+    throw new Error("Cannot change route for a trip with existing bookings");
+  }
+
+  if (payload.busId && payload.busId !== trip.busId) {
+    const bus = await prisma.bus.findFirst({
+      where: {
+        id: payload.busId,
+        saccoId: ownerProfile.sacco.id,
+        isActive: true,
+      },
+      include: { seats: true },
+    });
+
+    if (!bus) {
+      throw new Error("Selected bus not found or inactive");
+    }
+
+    if (bus.seats.length === 0) {
+      throw new Error("Selected bus has no configured seats");
+    }
+  }
+
+  if (payload.routeId && payload.routeId !== trip.routeId) {
+    const route = await prisma.route.findUnique({ where: { id: payload.routeId } });
+    if (!route) {
+      throw new Error("Selected route not found");
+    }
+  }
+
+  const nextDeparture = payload.departureTime ? new Date(payload.departureTime) : new Date(trip.departureTime);
+  const nextArrival = payload.arrivalTime ? new Date(payload.arrivalTime) : new Date(trip.arrivalTime);
+
+  if (Number.isNaN(nextDeparture.getTime()) || Number.isNaN(nextArrival.getTime())) {
+    throw new Error("Invalid departure or arrival time");
+  }
+
+  if (nextArrival <= nextDeparture) {
+    throw new Error("Arrival time must be after departure time");
+  }
+
+  const nextBasePrice = payload.basePrice !== undefined ? Number(payload.basePrice) : Number(trip.basePrice);
+  if (!Number.isFinite(nextBasePrice) || nextBasePrice <= 0) {
+    throw new Error("Base price must be a positive number");
+  }
+
+  return prisma.trip.update({
+    where: { id: tripId },
+    data: {
+      ...(payload.busId ? { busId: payload.busId } : {}),
+      ...(payload.routeId ? { routeId: payload.routeId } : {}),
+      ...(payload.tripType ? { tripType: payload.tripType } : {}),
+      departureTime: nextDeparture,
+      arrivalTime: nextArrival,
+      basePrice: nextBasePrice,
+      aiAnalysis: `AI schedule analysis: trip updated for owner controls. Route/bus timeline validated against live inventory.`,
+    },
+    include: {
+      sacco: true,
+      bus: true,
+      route: true,
+    },
+  });
+};
+
+export const deleteTrip = async (userId, tripId) => {
+  const ownerProfile = await prisma.ownerProfile.findUnique({
+    where: { userId },
+    include: { sacco: true },
+  });
+
+  if (!ownerProfile || !ownerProfile.sacco) {
+    throw new Error("Sacco not found for this owner");
+  }
+
+  const trip = await prisma.trip.findFirst({
+    where: {
+      id: tripId,
+      saccoId: ownerProfile.sacco.id,
+    },
+    include: {
+      bookings: true,
+    },
+  });
+
+  if (!trip) {
+    throw new Error("Trip not found");
+  }
+
+  if (trip.bookings.length > 0) {
+    throw new Error("Cannot delete trip with bookings. Cancel it instead.");
+  }
+
+  await prisma.trip.delete({ where: { id: tripId } });
+  return { id: tripId };
+};

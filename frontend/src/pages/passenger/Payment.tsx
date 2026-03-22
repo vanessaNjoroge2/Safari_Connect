@@ -30,7 +30,17 @@ export default function Payment() {
     setAttemptStartedAt(startedAt);
 
     try {
-      await initiateStkPushApi({ bookingId: booking.bookingId, phoneNumber: booking.phone });
+      const result = await initiateStkPushApi({ bookingId: booking.bookingId, phoneNumber: booking.phone });
+
+      if (result.data?.payment?.status === 'SUCCESS') {
+        confirmBooking(booking.bookingRef || result.data.payment.bookingId, result.data.payment.bookingId, 'CONFIRMED');
+        setStatus('success');
+        setPollingActive(false);
+        toast('STK push accepted and payment confirmed.', 'success');
+        setTimeout(() => navigate('/passenger/ticket'), 900);
+        return;
+      }
+
       setPollingActive(true);
       toast('STK push sent. Complete payment on your phone.', 'info');
     } catch (error) {

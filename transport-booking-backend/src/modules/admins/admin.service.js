@@ -242,6 +242,68 @@ function clamp(value, min, max) {
 	return Math.max(min, Math.min(max, value));
 }
 
+function normalizeAnalyticsRange(range) {
+	const value = String(range || "6m").toLowerCase();
+	if (["30d", "ytd", "6m"].includes(value)) return value;
+	return "6m";
+}
+
+function resolveRangeWindow(now, range) {
+	if (range === "30d") {
+		const start = new Date(now);
+		start.setDate(start.getDate() - 29);
+		start.setHours(0, 0, 0, 0);
+		return { start, mode: "daily" };
+	}
+
+	if (range === "ytd") {
+		return {
+			start: new Date(now.getFullYear(), 0, 1),
+			mode: "monthly",
+		};
+	}
+
+	return {
+		start: new Date(now.getFullYear(), now.getMonth() - 5, 1),
+		mode: "monthly",
+	};
+}
+
+function createTimeBuckets(now, range, mode) {
+	const buckets = [];
+
+	if (mode === "daily") {
+		for (let i = 29; i >= 0; i -= 1) {
+			const date = new Date(now);
+			date.setDate(date.getDate() - i);
+			date.setHours(0, 0, 0, 0);
+			const key = date.toISOString().slice(0, 10);
+			const label = date.toLocaleDateString("en-KE", { month: "short", day: "numeric" });
+			buckets.push({ key, label });
+		}
+		return buckets;
+	}
+
+	if (range === "ytd") {
+		for (let m = 0; m <= now.getMonth(); m += 1) {
+			const date = new Date(now.getFullYear(), m, 1);
+			const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+			const label = date.toLocaleDateString("en-KE", { month: "short", year: "numeric" });
+			buckets.push({ key, label });
+		}
+		return buckets;
+	}
+
+	for (let i = 5; i >= 0; i -= 1) {
+		const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+		const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+		const label = date.toLocaleDateString("en-KE", { month: "short", year: "numeric" });
+		buckets.push({ key, label });
+	}
+
+	return buckets;
+}
+
 export async function getAdminUsers(query = {}) {
 	const q = String(query.q || "").trim();
 	const role = String(query.role || "ALL").toUpperCase();
@@ -433,14 +495,16 @@ export async function createAdminSacco(payload) {
 	return result.sacco;
 }
 
-export async function getAdminAnalytics() {
+export async function getAdminAnalytics(query = {}) {
 	const now = new Date();
-	const startMonth = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+	const range = normalizeAnalyticsRange(query.range);
+	const { start: startWindow, mode } = resolveRangeWindow(now, range);
+	const buckets = createTimeBuckets(now, range, mode);
 
 	const payments = await prisma.payment.findMany({
 		where: {
 			status: "SUCCESS",
-			createdAt: { gte: startMonth },
+			createdAt: { gte: startWindow },
 		},
 		include: {
 			booking: {
@@ -456,13 +520,26 @@ export async function getAdminAnalytics() {
 	const monthlyMap = new Map();
 	const routeMap = new Map();
 	const saccoMap = new Map();
+	const paidPerUser = new Map();
+	const activeSaccoIds = new Set();
+	let grossRevenue = 0;
+	let totalBookings = 0;
 
 	for (const payment of payments) {
-		const monthKey = `${payment.createdAt.getFullYear()}-${String(payment.createdAt.getMonth() + 1).padStart(2, "0")}`;
+		const monthKey =
+			mode === "daily"
+				? payment.createdAt.toISOString().slice(0, 10)
+				: `${payment.createdAt.getFullYear()}-${String(payment.createdAt.getMonth() + 1).padStart(2, "0")}`;
 		const monthData = monthlyMap.get(monthKey) || { revenue: 0, bookings: 0 };
 		monthData.revenue += toMoney(payment.amount);
 		monthData.bookings += 1;
 		monthlyMap.set(monthKey, monthData);
+		grossRevenue += toMoney(payment.amount);
+		totalBookings += 1;
+
+		if (payment.userId) {
+			paidPerUser.set(payment.userId, (paidPerUser.get(payment.userId) || 0) + 1);
+		}
 
 		const route = payment.booking?.trip?.route;
 		if (route) {
@@ -475,6 +552,7 @@ export async function getAdminAnalytics() {
 
 		const sacco = payment.booking?.trip?.sacco;
 		if (sacco) {
+			activeSaccoIds.add(sacco.id);
 			const saccoData = saccoMap.get(sacco.name) || { revenue: 0, bookings: 0 };
 			saccoData.revenue += toMoney(payment.amount);
 			saccoData.bookings += 1;
@@ -483,10 +561,9 @@ export async function getAdminAnalytics() {
 	}
 
 	const months = [];
-	for (let i = 5; i >= 0; i -= 1) {
-		const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-		const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-		const label = date.toLocaleDateString("en-KE", { month: "short", year: "numeric" });
+	for (const bucket of buckets) {
+		const key = bucket.key;
+		const label = bucket.label;
 		const data = monthlyMap.get(key) || { revenue: 0, bookings: 0 };
 		months.push({
 			month: label,
@@ -505,47 +582,633 @@ export async function getAdminAnalytics() {
 		.sort((a, b) => b.revenue - a.revenue)
 		.slice(0, 6);
 
+	const [refundedPayments, processedPayments, newUsers] = await Promise.all([
+		prisma.payment.count({
+			where: {
+				status: "REFUNDED",
+				createdAt: { gte: startWindow },
+			},
+		}),
+		prisma.payment.count({
+			where: {
+				status: { in: ["SUCCESS", "FAILED", "REFUNDED"] },
+				createdAt: { gte: startWindow },
+			},
+		}),
+		prisma.user.count({
+			where: {
+				createdAt: { gte: startWindow },
+			},
+		}),
+	]);
+
+	const repeatCustomers = Array.from(paidPerUser.values()).filter((count) => count >= 2).length;
+	const repeatBookingRate = paidPerUser.size ? Number(((repeatCustomers / paidPerUser.size) * 100).toFixed(1)) : 0;
+	const refundRate = processedPayments ? Number(((refundedPayments / processedPayments) * 100).toFixed(1)) : 0;
+	const platformCommission = Number((grossRevenue * 0.05).toFixed(2));
+	const avgFare = totalBookings ? Number((grossRevenue / totalBookings).toFixed(2)) : 0;
+	const periodLabel = range === "30d" ? "Last 30 days" : range === "ytd" ? `YTD ${now.getFullYear()}` : "Last 6 months";
+
 	return {
+		range,
+		periodLabel,
+		generatedAt: now.toISOString(),
+		windowStart: startWindow.toISOString(),
+		windowEnd: now.toISOString(),
+		kpis: {
+			grossRevenue,
+			totalBookings,
+			activeSaccos: activeSaccoIds.size,
+			platformCommission,
+			avgFare,
+			refundRate,
+			newUsers,
+			repeatBookingRate,
+		},
 		months,
 		topRoutes,
 		topSaccos,
 	};
 }
 
-export async function getAdminSupportTickets() {
-	return supportTickets;
+const VALID_SUPPORT_STATUS = ["OPEN", "IN_REVIEW", "ESCALATED", "RESOLVED"];
+const VALID_SUPPORT_PRIORITY = ["LOW", "MEDIUM", "HIGH"];
+const VALID_SUPPORT_CATEGORY = ["BOOKING", "PAYMENT", "DISPUTE", "APP_BUG", "GENERAL"];
+const VALID_NOTIFICATION_CHANNEL = ["IN_APP", "EMAIL", "SMS", "PUSH"];
+const VALID_NOTIFICATION_STATUS = ["DRAFT", "SCHEDULED", "SENT", "CANCELLED"];
+const VALID_NOTIFICATION_TARGET = ["ADMIN", "OWNER", "USER", "ALL"];
+const VALID_HELP_STATUS = ["DRAFT", "PUBLISHED", "ARCHIVED"];
+
+function toUiSupportStatus(status) {
+	if (status === "IN_REVIEW") return "In Review";
+	const lower = String(status || "").toLowerCase();
+	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function toUiSupportCategory(category) {
+	if (category === "APP_BUG") return "App Bug";
+	const lower = String(category || "").toLowerCase();
+	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function toUiNotificationChannel(channel) {
+	if (channel === "IN_APP") return "In App";
+	const lower = String(channel || "").toLowerCase();
+	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function toUiNotificationStatus(status) {
+	const lower = String(status || "").toLowerCase();
+	return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function parseSupportStatus(status) {
+	if (!status) return undefined;
+	const normalized = String(status).trim().toUpperCase().replace(/\s+/g, "_");
+	if (!VALID_SUPPORT_STATUS.includes(normalized)) throw new Error("Invalid support ticket status");
+	return normalized;
+}
+
+function parseSupportPriority(priority) {
+	if (!priority) return undefined;
+	const normalized = String(priority).trim().toUpperCase();
+	if (!VALID_SUPPORT_PRIORITY.includes(normalized)) throw new Error("Invalid support ticket priority");
+	return normalized;
+}
+
+function parseSupportCategory(category) {
+	if (!category) return undefined;
+	const normalized = String(category).trim().toUpperCase().replace(/\s+/g, "_");
+	if (!VALID_SUPPORT_CATEGORY.includes(normalized)) throw new Error("Invalid support ticket category");
+	return normalized;
+}
+
+function parseNotificationChannel(channel) {
+	if (!channel) throw new Error("Notification channel is required");
+	const normalized = String(channel).trim().toUpperCase().replace(/\s+/g, "_");
+	if (!VALID_NOTIFICATION_CHANNEL.includes(normalized)) throw new Error("Invalid notification channel");
+	return normalized;
+}
+
+function parseNotificationTarget(targetRole) {
+	if (!targetRole) return "ALL";
+	const normalized = String(targetRole).trim().toUpperCase();
+	if (!VALID_NOTIFICATION_TARGET.includes(normalized)) throw new Error("Invalid notification target role");
+	return normalized;
+}
+
+function parseNotificationStatus(status) {
+	if (!status) return undefined;
+	const normalized = String(status).trim().toUpperCase();
+	if (!VALID_NOTIFICATION_STATUS.includes(normalized)) throw new Error("Invalid notification status");
+	return normalized;
+}
+
+function parseHelpStatus(status) {
+	if (!status) return undefined;
+	const normalized = String(status).trim().toUpperCase();
+	if (!VALID_HELP_STATUS.includes(normalized)) throw new Error("Invalid help article status");
+	return normalized;
+}
+
+function toHelpSlug(title) {
+	return slugify(String(title || ""), { lower: true, strict: true });
+}
+
+function mapTicket(ticket) {
+	return {
+		id: ticket.id,
+		ticketCode: ticket.ticketCode,
+		subject: ticket.subject,
+		user: ticket.userName,
+		category: toUiSupportCategory(ticket.category),
+		created: ticket.createdAt.toLocaleString("en-KE", {
+			day: "2-digit",
+			month: "short",
+			year: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		}),
+		priority: ticket.priority.charAt(0) + ticket.priority.slice(1).toLowerCase(),
+		status: toUiSupportStatus(ticket.status),
+		assignedTo: ticket.assignedTo || "Unassigned",
+		description: ticket.description || "",
+	};
+}
+
+function mapSettings(settings) {
+	return {
+		commissionRate: settings.commissionRate,
+		minimumFare: settings.minimumFare,
+		aiPricing: settings.aiPricing,
+		fraudBlockThreshold: settings.fraudBlockThreshold,
+		delayRiskAlert: settings.delayRiskAlert,
+		voiceLanguages: settings.voiceLanguages,
+		notifications: {
+			smsBooking: settings.smsBooking,
+			emailTicket: settings.emailTicket,
+			pushDeparture: settings.pushDeparture,
+			pushNotifications: settings.pushNotifications,
+			saccoRevenueReport: settings.saccoRevenueReport,
+			adminFraudAlert: settings.adminFraudAlert,
+		},
+		sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
+		maxFailedLogins: settings.maxFailedLogins,
+		require2fa: settings.require2fa,
+		platformInfo: {
+			version: settings.version,
+			environment: settings.environment,
+			build: settings.build,
+			apiStatus: settings.apiStatus,
+		},
+	};
+}
+
+async function ensurePlatformSettings() {
+	const settings = await prisma.platformSetting.findUnique({ where: { id: "default" } });
+	if (settings) return settings;
+
+	return prisma.platformSetting.create({
+		data: {
+			id: "default",
+		},
+	});
+}
+
+async function ensureSupportSeed() {
+	const count = await prisma.supportTicket.count();
+	if (count > 0) return;
+
+	await prisma.supportTicket.createMany({
+		data: [
+			{
+				ticketCode: "TKT-001",
+				subject: "Did not receive ticket after payment",
+				userName: "Virginia Wamaitha",
+				category: "BOOKING",
+				priority: "HIGH",
+				status: "OPEN",
+				assignedTo: "Sarah K.",
+				description: "Passenger completed payment but did not receive digital ticket in app.",
+			},
+			{
+				ticketCode: "TKT-002",
+				subject: "Driver refused to honour booking",
+				userName: "James Kariuki",
+				category: "DISPUTE",
+				priority: "HIGH",
+				status: "IN_REVIEW",
+				assignedTo: "John M.",
+				description: "Passenger flagged refusal to board despite valid booking code.",
+			},
+			{
+				ticketCode: "TKT-003",
+				subject: "Overcharged for luggage with no receipt",
+				userName: "Faith Njeri",
+				category: "PAYMENT",
+				priority: "MEDIUM",
+				status: "IN_REVIEW",
+				assignedTo: "Sarah K.",
+				description: "Possible extra charge by conductor not reflected in booking record.",
+			},
+		],
+	});
+}
+
+async function ensureNotificationSeed() {
+	const count = await prisma.adminNotification.count();
+	if (count > 0) return;
+
+	await prisma.adminNotification.createMany({
+		data: [
+			{
+				title: "Weekend surge pricing advisory",
+				message: "Expected demand spike on Nairobi routes this weekend. Monitor fare bands.",
+				channel: "IN_APP",
+				targetRole: "OWNER",
+				status: "SENT",
+				sentAt: new Date(),
+			},
+			{
+				title: "Fraud risk bulletin",
+				message: "Escalated failed payment retries detected. Review flagged bookings.",
+				channel: "EMAIL",
+				targetRole: "ADMIN",
+				status: "DRAFT",
+			},
+		],
+	});
+}
+
+async function ensureHelpSeed() {
+	const count = await prisma.helpArticle.count();
+	if (count > 0) return;
+
+	await prisma.helpArticle.createMany({
+		data: [
+			{
+				title: "How to resolve payment disputes",
+				slug: "how-to-resolve-payment-disputes",
+				category: "Support",
+				content: "Verify payment reference, reconcile booking and payment records, then communicate a resolution timeline.",
+				status: "PUBLISHED",
+				isAiGenerated: false,
+			},
+			{
+				title: "Escalation workflow for unresolved tickets",
+				slug: "escalation-workflow-for-unresolved-tickets",
+				category: "Operations",
+				content: "Move unresolved high-priority tickets to escalated status and assign accountability owner immediately.",
+				status: "PUBLISHED",
+				isAiGenerated: false,
+			},
+		],
+	});
+}
+
+export async function getAdminSupportTickets(query = {}) {
+	await ensureSupportSeed();
+
+	const q = String(query.q || "").trim();
+	const status = parseSupportStatus(query.status);
+	const category = parseSupportCategory(query.category);
+	const limit = Math.min(Math.max(Number(query.limit || 200), 1), 500);
+
+	const where = {};
+	if (status) where.status = status;
+	if (category) where.category = category;
+	if (q) {
+		where.OR = [
+			{ ticketCode: { contains: q, mode: "insensitive" } },
+			{ subject: { contains: q, mode: "insensitive" } },
+			{ userName: { contains: q, mode: "insensitive" } },
+			{ assignedTo: { contains: q, mode: "insensitive" } },
+		];
+	}
+
+	const tickets = await prisma.supportTicket.findMany({
+		where,
+		orderBy: { createdAt: "desc" },
+		take: limit,
+	});
+
+	return tickets.map(mapTicket);
+}
+
+export async function createAdminSupportTicket(payload = {}) {
+	await ensureSupportSeed();
+
+	const subject = String(payload.subject || "").trim();
+	const user = String(payload.user || "").trim();
+	if (!subject || !user) throw new Error("Subject and user are required");
+
+	const total = await prisma.supportTicket.count();
+	const ticketCode = `TKT-${String(total + 1).padStart(3, "0")}`;
+
+	const created = await prisma.supportTicket.create({
+		data: {
+			ticketCode,
+			subject,
+			userName: user,
+			category: parseSupportCategory(payload.category) || "GENERAL",
+			priority: parseSupportPriority(payload.priority) || "MEDIUM",
+			status: parseSupportStatus(payload.status) || "OPEN",
+			assignedTo: String(payload.assignedTo || "").trim() || null,
+			description: String(payload.description || "").trim() || null,
+		},
+	});
+
+	return mapTicket(created);
+}
+
+export async function updateSupportTicketStatus(ticketId, payload = {}) {
+	const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
+	if (!ticket) throw new Error("Support ticket not found");
+
+	const data = {};
+	const status = parseSupportStatus(payload.status);
+	const priority = parseSupportPriority(payload.priority);
+	const category = parseSupportCategory(payload.category);
+
+	if (status) data.status = status;
+	if (priority) data.priority = priority;
+	if (category) data.category = category;
+	if (payload.subject !== undefined) data.subject = String(payload.subject || "").trim() || ticket.subject;
+	if (payload.user !== undefined) data.userName = String(payload.user || "").trim() || ticket.userName;
+	if (payload.assignedTo !== undefined) {
+		const assigned = String(payload.assignedTo || "").trim();
+		data.assignedTo = assigned || null;
+	}
+	if (payload.description !== undefined) {
+		const description = String(payload.description || "").trim();
+		data.description = description || null;
+	}
+
+	const updated = await prisma.supportTicket.update({
+		where: { id: ticketId },
+		data,
+	});
+
+	return mapTicket(updated);
+}
+
+export async function deleteSupportTicket(ticketId) {
+	const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
+	if (!ticket) throw new Error("Support ticket not found");
+
+	await prisma.supportTicket.delete({ where: { id: ticketId } });
+	return { id: ticketId };
 }
 
 export async function getAdminSettings() {
-	return adminSettings;
+	const settings = await ensurePlatformSettings();
+	return mapSettings(settings);
 }
 
 export async function updateAdminSettings(payload) {
-	adminSettings = {
-		...adminSettings,
-		...payload,
-		notifications: {
-			...adminSettings.notifications,
-			...(payload.notifications || {}),
-		},
-		platformInfo: adminSettings.platformInfo,
+	const current = await ensurePlatformSettings();
+
+	const nextNotifications = {
+		smsBooking: payload.notifications?.smsBooking ?? current.smsBooking,
+		emailTicket: payload.notifications?.emailTicket ?? current.emailTicket,
+		pushDeparture: payload.notifications?.pushDeparture ?? current.pushDeparture,
+		pushNotifications: payload.notifications?.pushNotifications ?? current.pushNotifications,
+		saccoRevenueReport: payload.notifications?.saccoRevenueReport ?? current.saccoRevenueReport,
+		adminFraudAlert: payload.notifications?.adminFraudAlert ?? current.adminFraudAlert,
 	};
 
-	return adminSettings;
+	const updated = await prisma.platformSetting.update({
+		where: { id: "default" },
+		data: {
+			commissionRate: payload.commissionRate ?? current.commissionRate,
+			minimumFare: payload.minimumFare ?? current.minimumFare,
+			aiPricing: payload.aiPricing ?? current.aiPricing,
+			fraudBlockThreshold: payload.fraudBlockThreshold ?? current.fraudBlockThreshold,
+			delayRiskAlert: payload.delayRiskAlert ?? current.delayRiskAlert,
+			voiceLanguages: payload.voiceLanguages ?? current.voiceLanguages,
+			smsBooking: nextNotifications.smsBooking,
+			emailTicket: nextNotifications.emailTicket,
+			pushDeparture: nextNotifications.pushDeparture,
+			pushNotifications: nextNotifications.pushNotifications,
+			saccoRevenueReport: nextNotifications.saccoRevenueReport,
+			adminFraudAlert: nextNotifications.adminFraudAlert,
+			sessionTimeoutMinutes: payload.sessionTimeoutMinutes ?? current.sessionTimeoutMinutes,
+			maxFailedLogins: payload.maxFailedLogins ?? current.maxFailedLogins,
+			require2fa: payload.require2fa ?? current.require2fa,
+			version: payload.platformInfo?.version ?? current.version,
+			environment: payload.platformInfo?.environment ?? current.environment,
+			build: payload.platformInfo?.build ?? current.build,
+			apiStatus: payload.platformInfo?.apiStatus ?? current.apiStatus,
+		},
+	});
+
+	return mapSettings(updated);
 }
 
-export async function updateSupportTicketStatus(ticketId, status) {
-	const idx = supportTickets.findIndex((t) => t.id === ticketId);
-	if (idx === -1) {
-		throw new Error("Support ticket not found");
+export async function getAdminNotifications(query = {}) {
+	await ensureNotificationSeed();
+
+	const q = String(query.q || "").trim();
+	const status = parseNotificationStatus(query.status);
+	const channel = query.channel ? parseNotificationChannel(query.channel) : undefined;
+	const targetRole = query.targetRole ? parseNotificationTarget(query.targetRole) : undefined;
+	const limit = Math.min(Math.max(Number(query.limit || 200), 1), 500);
+
+	const where = {};
+	if (status) where.status = status;
+	if (channel) where.channel = channel;
+	if (targetRole) where.targetRole = targetRole;
+	if (q) {
+		where.OR = [
+			{ title: { contains: q, mode: "insensitive" } },
+			{ message: { contains: q, mode: "insensitive" } },
+		];
 	}
 
-	supportTickets[idx] = {
-		...supportTickets[idx],
-		status,
-	};
+	const rows = await prisma.adminNotification.findMany({
+		where,
+		orderBy: { createdAt: "desc" },
+		take: limit,
+	});
 
-	return supportTickets[idx];
+	return rows.map((row) => ({
+		id: row.id,
+		title: row.title,
+		message: row.message,
+		channel: toUiNotificationChannel(row.channel),
+		targetRole: row.targetRole,
+		status: toUiNotificationStatus(row.status),
+		scheduledFor: row.scheduledFor,
+		sentAt: row.sentAt,
+		createdAt: row.createdAt,
+	}));
+}
+
+export async function createAdminNotification(payload = {}) {
+	await ensureNotificationSeed();
+	const title = String(payload.title || "").trim();
+	const message = String(payload.message || "").trim();
+	if (!title || !message) throw new Error("Title and message are required");
+
+	const status = parseNotificationStatus(payload.status) || "DRAFT";
+	const scheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : null;
+
+	const row = await prisma.adminNotification.create({
+		data: {
+			title,
+			message,
+			channel: parseNotificationChannel(payload.channel),
+			targetRole: parseNotificationTarget(payload.targetRole),
+			status,
+			scheduledFor,
+			sentAt: status === "SENT" ? new Date() : null,
+		},
+	});
+
+	return {
+		id: row.id,
+		title: row.title,
+		message: row.message,
+		channel: toUiNotificationChannel(row.channel),
+		targetRole: row.targetRole,
+		status: toUiNotificationStatus(row.status),
+		scheduledFor: row.scheduledFor,
+		sentAt: row.sentAt,
+		createdAt: row.createdAt,
+	};
+}
+
+export async function updateAdminNotification(notificationId, payload = {}) {
+	const existing = await prisma.adminNotification.findUnique({ where: { id: notificationId } });
+	if (!existing) throw new Error("Notification not found");
+
+	const status = parseNotificationStatus(payload.status);
+	const data = {};
+	if (payload.title !== undefined) data.title = String(payload.title || "").trim() || existing.title;
+	if (payload.message !== undefined) data.message = String(payload.message || "").trim() || existing.message;
+	if (payload.channel !== undefined) data.channel = parseNotificationChannel(payload.channel);
+	if (payload.targetRole !== undefined) data.targetRole = parseNotificationTarget(payload.targetRole);
+	if (status) {
+		data.status = status;
+		if (status === "SENT") data.sentAt = new Date();
+	}
+	if (payload.scheduledFor !== undefined) {
+		data.scheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : null;
+	}
+
+	const row = await prisma.adminNotification.update({
+		where: { id: notificationId },
+		data,
+	});
+
+	return {
+		id: row.id,
+		title: row.title,
+		message: row.message,
+		channel: toUiNotificationChannel(row.channel),
+		targetRole: row.targetRole,
+		status: toUiNotificationStatus(row.status),
+		scheduledFor: row.scheduledFor,
+		sentAt: row.sentAt,
+		createdAt: row.createdAt,
+	};
+}
+
+export async function deleteAdminNotification(notificationId) {
+	const existing = await prisma.adminNotification.findUnique({ where: { id: notificationId } });
+	if (!existing) throw new Error("Notification not found");
+
+	await prisma.adminNotification.delete({ where: { id: notificationId } });
+	return { id: notificationId };
+}
+
+export async function getAdminHelpArticles(query = {}) {
+	await ensureHelpSeed();
+
+	const q = String(query.q || "").trim();
+	const status = parseHelpStatus(query.status);
+	const limit = Math.min(Math.max(Number(query.limit || 100), 1), 200);
+
+	const where = {};
+	if (status) where.status = status;
+	if (q) {
+		where.OR = [
+			{ title: { contains: q, mode: "insensitive" } },
+			{ category: { contains: q, mode: "insensitive" } },
+			{ content: { contains: q, mode: "insensitive" } },
+		];
+	}
+
+	return prisma.helpArticle.findMany({
+		where,
+		orderBy: { updatedAt: "desc" },
+		take: limit,
+	});
+}
+
+export async function createAdminHelpArticle(payload = {}) {
+	const title = String(payload.title || "").trim();
+	const category = String(payload.category || "").trim();
+	const content = String(payload.content || "").trim();
+	if (!title || !category || !content) throw new Error("Title, category and content are required");
+
+	const baseSlug = toHelpSlug(title);
+	let slug = baseSlug;
+	let i = 1;
+	while (await prisma.helpArticle.findUnique({ where: { slug } })) {
+		slug = `${baseSlug}-${i++}`;
+	}
+
+	return prisma.helpArticle.create({
+		data: {
+			title,
+			slug,
+			category,
+			content,
+			status: parseHelpStatus(payload.status) || "PUBLISHED",
+			isAiGenerated: Boolean(payload.isAiGenerated),
+		},
+	});
+}
+
+export async function updateAdminHelpArticle(helpId, payload = {}) {
+	const existing = await prisma.helpArticle.findUnique({ where: { id: helpId } });
+	if (!existing) throw new Error("Help article not found");
+
+	let slug = existing.slug;
+	if (payload.title !== undefined) {
+		const nextTitle = String(payload.title || "").trim();
+		if (nextTitle) {
+			const baseSlug = toHelpSlug(nextTitle);
+			slug = baseSlug;
+			let i = 1;
+			while (true) {
+				const found = await prisma.helpArticle.findUnique({ where: { slug } });
+				if (!found || found.id === existing.id) break;
+				slug = `${baseSlug}-${i++}`;
+			}
+		}
+	}
+
+	return prisma.helpArticle.update({
+		where: { id: helpId },
+		data: {
+			title: payload.title !== undefined ? String(payload.title || "").trim() || existing.title : existing.title,
+			slug,
+			category: payload.category !== undefined ? String(payload.category || "").trim() || existing.category : existing.category,
+			content: payload.content !== undefined ? String(payload.content || "").trim() || existing.content : existing.content,
+			status: parseHelpStatus(payload.status) || existing.status,
+			isAiGenerated: payload.isAiGenerated !== undefined ? Boolean(payload.isAiGenerated) : existing.isAiGenerated,
+		},
+	});
+}
+
+export async function deleteAdminHelpArticle(helpId) {
+	const existing = await prisma.helpArticle.findUnique({ where: { id: helpId } });
+	if (!existing) throw new Error("Help article not found");
+
+	await prisma.helpArticle.delete({ where: { id: helpId } });
+	return { id: helpId };
 }
 
 export async function setSaccoActiveState(saccoId, isActive) {
@@ -576,111 +1239,3 @@ export async function setUserStatus(userId, status) {
 		data: { status },
 	});
 }
-
-let adminSettings = {
-	commissionRate: 5,
-	minimumFare: 50,
-	aiPricing: true,
-	fraudBlockThreshold: 80,
-	delayRiskAlert: "medium",
-	voiceLanguages: "en-sw",
-	notifications: {
-		smsBooking: true,
-		emailTicket: true,
-		pushDeparture: true,
-		saccoRevenueReport: false,
-		adminFraudAlert: true,
-	},
-	sessionTimeoutMinutes: 60,
-	maxFailedLogins: 5,
-	require2fa: true,
-	platformInfo: {
-		version: "3.0.0",
-		environment: "Production",
-		build: "20260319",
-		apiStatus: "Operational",
-	},
-};
-
-let supportTickets = [
-	{
-		id: "TKT-001",
-		subject: "Did not receive ticket after payment",
-		user: "Virginia Wamaitha",
-		category: "Booking",
-		created: "18 Mar 2026 09:12",
-		priority: "High",
-		status: "Open",
-		assignedTo: "Sarah K.",
-	},
-	{
-		id: "TKT-002",
-		subject: "Driver refused to honour booking",
-		user: "James Kariuki",
-		category: "Dispute",
-		created: "18 Mar 2026 08:45",
-		priority: "High",
-		status: "In Review",
-		assignedTo: "John M.",
-	},
-	{
-		id: "TKT-003",
-		subject: "Overcharged for luggage — no receipt given",
-		user: "Faith Njeri",
-		category: "Payment",
-		created: "17 Mar 2026 17:30",
-		priority: "Medium",
-		status: "In Review",
-		assignedTo: "Sarah K.",
-	},
-	{
-		id: "TKT-004",
-		subject: "Cannot cancel booking — 24h before trip",
-		user: "Brian Kimani",
-		category: "Booking",
-		created: "15 Mar 2026 14:00",
-		priority: "Medium",
-		status: "Resolved",
-		assignedTo: "John M.",
-	},
-	{
-		id: "TKT-005",
-		subject: "M-Pesa deducted but no confirmation SMS",
-		user: "Lucy Wanjiru",
-		category: "Payment",
-		created: "15 Mar 2026 11:20",
-		priority: "High",
-		status: "Open",
-		assignedTo: "Unassigned",
-	},
-	{
-		id: "TKT-006",
-		subject: "Wrong seat allocated on bus",
-		user: "Peter Odhiambo",
-		category: "Booking",
-		created: "14 Mar 2026 09:00",
-		priority: "Low",
-		status: "Resolved",
-		assignedTo: "Sarah K.",
-	},
-	{
-		id: "TKT-007",
-		subject: "App shows wrong departure time for NBI-MBA",
-		user: "Kevin Otieno",
-		category: "App Bug",
-		created: "14 Mar 2026 08:10",
-		priority: "Medium",
-		status: "In Review",
-		assignedTo: "Dev Team",
-	},
-	{
-		id: "TKT-008",
-		subject: "SACCO blocked me without reason",
-		user: "Samuel Mutua",
-		category: "Dispute",
-		created: "13 Mar 2026 16:55",
-		priority: "High",
-		status: "Escalated",
-		assignedTo: "Admin",
-	},
-];

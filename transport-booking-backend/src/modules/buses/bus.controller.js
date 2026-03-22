@@ -3,6 +3,10 @@ import {
   getMyBuses,
   createSeatsForBus,
   getBusSeats,
+  updateBus,
+  deleteBus,
+  replaceSeatsForBus,
+  deleteSeatsForBus,
 } from "./bus.service.js";
 
 export const addBus = async (req, res, next) => {
@@ -59,6 +63,66 @@ export const fetchBusSeats = async (req, res, next) => {
       success: true,
       message: "Seats fetched successfully",
       data: seats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateBusHandler = async (req, res, next) => {
+  try {
+    const bus = await updateBus(req.user.userId, req.params.busId, req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: "Bus updated successfully",
+      data: bus,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteBusHandler = async (req, res, next) => {
+  try {
+    const result = await deleteBus(req.user.userId, req.params.busId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Bus deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const replaceBusSeatsHandler = async (req, res, next) => {
+  try {
+    const seats = await replaceSeatsForBus(
+      req.user.userId,
+      req.params.busId,
+      req.body.seats
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Seats updated successfully",
+      data: seats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteBusSeatsHandler = async (req, res, next) => {
+  try {
+    const result = await deleteSeatsForBus(req.user.userId, req.params.busId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Seats deleted successfully",
+      data: result,
     });
   } catch (error) {
     next(error);

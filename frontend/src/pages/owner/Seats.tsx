@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
-import { createOwnerBusSeatsApi, getOwnerBusSeatsApi, getOwnerBusesApi } from '../../lib/api';
+import {
+  createOwnerBusSeatsApi,
+  deleteOwnerBusSeatsApi,
+  getOwnerBusSeatsApi,
+  getOwnerBusesApi,
+  updateOwnerBusSeatsApi,
+} from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
 
 function buildSeatPayload(capacity: number) {
@@ -31,6 +37,7 @@ export default function OwnerSeats() {
   const [buses, setBuses] = useState<any[]>([]);
   const [busSeatMap, setBusSeatMap] = useState<Record<string, any[]>>({});
   const [settingBusId, setSettingBusId] = useState<string | null>(null);
+  const [clearingBusId, setClearingBusId] = useState<string | null>(null);
 
   const loadData = async (silent = false) => {
     if (silent) {
@@ -83,13 +90,31 @@ export default function OwnerSeats() {
     setSettingBusId(bus.id);
     try {
       const seats = buildSeatPayload(bus.seatCapacity);
-      await createOwnerBusSeatsApi(bus.id, seats);
-      toast(`Seat layout configured for ${bus.plateNumber}`, 'success');
+      if ((busSeatMap[bus.id] || []).length > 0) {
+        await updateOwnerBusSeatsApi(bus.id, seats);
+        toast(`Seat layout updated for ${bus.plateNumber}`, 'success');
+      } else {
+        await createOwnerBusSeatsApi(bus.id, seats);
+        toast(`Seat layout configured for ${bus.plateNumber}`, 'success');
+      }
       await loadData(true);
     } catch (error) {
       toast((error as Error).message || 'Failed to configure seats', 'error');
     } finally {
       setSettingBusId(null);
+    }
+  };
+
+  const clearSeats = async (bus: any) => {
+    setClearingBusId(bus.id);
+    try {
+      await deleteOwnerBusSeatsApi(bus.id);
+      toast(`Seat layout cleared for ${bus.plateNumber}`, 'success');
+      await loadData(true);
+    } catch (error) {
+      toast((error as Error).message || 'Failed to clear seats', 'error');
+    } finally {
+      setClearingBusId(null);
     }
   };
 
@@ -124,7 +149,7 @@ export default function OwnerSeats() {
                   <th>Plate</th>
                   <th>Capacity</th>
                   <th>Seats configured</th>
-                  <th>Action</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,17 +162,30 @@ export default function OwnerSeats() {
                       <td>{bus.seatCapacity}</td>
                       <td>{seats.length}</td>
                       <td>
-                        {seats.length > 0 ? (
-                          <span className="text-xs text-muted">Configured</span>
-                        ) : (
+                        <div style={{ display: 'flex', gap: 8 }}>
                           <button
                             className="btn btn-sm btn-primary"
                             disabled={settingBusId === bus.id}
                             onClick={() => void setupSeats(bus)}
                           >
-                            {settingBusId === bus.id ? 'Configuring...' : 'Configure seats'}
+                            {settingBusId === bus.id
+                              ? seats.length > 0
+                                ? 'Updating...'
+                                : 'Configuring...'
+                              : seats.length > 0
+                                ? 'Reconfigure'
+                                : 'Configure seats'}
                           </button>
-                        )}
+                          {seats.length > 0 && (
+                            <button
+                              className="btn btn-sm"
+                              disabled={clearingBusId === bus.id}
+                              onClick={() => void clearSeats(bus)}
+                            >
+                              {clearingBusId === bus.id ? 'Clearing...' : 'Clear'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

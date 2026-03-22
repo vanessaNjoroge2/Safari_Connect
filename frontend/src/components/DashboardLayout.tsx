@@ -15,6 +15,9 @@ const USER_NAV: NavItem[] = [
   { to: '/passenger/seat',       label: 'Seat selection',   icon: '💺' },
   { to: '/passenger/mybookings', label: 'My bookings',      icon: '📂' },
   { to: '/passenger/payments',   label: 'Payments',          icon: '💳' },
+  { section: 'Support' },
+  { to: '/passenger/notifications', label: 'Notifications',  icon: '🔔' },
+  { to: '/passenger/help',       label: 'Help center',       icon: '❓' },
   { section: 'Other Services' },
   { to: '/carrier',              label: 'Carrier services', icon: '📦', end: true },
   { section: 'Account' },
@@ -34,6 +37,9 @@ const OWNER_NAV: NavItem[] = [
   { section: 'Intelligence' },
   { to: '/owner/analytics',  label: 'Analytics',             icon: '📈' },
   { to: '/owner/customers',  label: 'Customers',             icon: '👥' },
+  { section: 'Support' },
+  { to: '/owner/notifications', label: 'Notifications',      icon: '🔔' },
+  { to: '/owner/help',       label: 'Help center',           icon: '❓' },
   { section: 'Account' },
   { to: '/owner/settings',   label: 'Settings',              icon: '⚙️' },
 ];
@@ -49,6 +55,8 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/payments',   label: 'Payments',           icon: '💰' },
   { to: '/admin/analytics',  label: 'Analytics',          icon: '📈' },
   { to: '/admin/support',    label: 'Support & disputes', icon: '🆘' },
+  { to: '/admin/notifications', label: 'Notifications',   icon: '🔔' },
+  { to: '/admin/help', label: 'Help center',              icon: '❓' },
   { section: 'System' },
   { to: '/admin/settings',   label: 'Platform settings',  icon: '⚙️' },
 ];
@@ -92,6 +100,36 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
 
   const handleLogout = () => {
     logout();
+    navigate('/');
+  };
+
+  const handleNotificationsClick = () => {
+    if (!user) return;
+    if (user.role === 'passenger') {
+      navigate('/passenger/notifications');
+      return;
+    }
+    if (user.role === 'owner') {
+      navigate('/owner/notifications');
+      return;
+    }
+    if (user.role === 'admin') navigate('/admin/notifications');
+  };
+
+  const handleHelpClick = () => {
+    if (!user) return;
+    if (user.role === 'passenger') {
+      navigate('/passenger/help');
+      return;
+    }
+    if (user.role === 'owner') {
+      navigate('/owner/help');
+      return;
+    }
+    if (user.role === 'admin') {
+      navigate('/admin/help');
+      return;
+    }
     navigate('/');
   };
 
@@ -177,12 +215,12 @@ export default function DashboardLayout({ children, title, subtitle, actions }: 
             {actions}
             {actions && <div className="topbar-divider" />}
 
-            <button className="topbar-icon-btn" title="Notifications">
+            <button className="topbar-icon-btn" title="Notifications" onClick={handleNotificationsClick}>
               🔔
               <span className="topbar-notif-dot" />
             </button>
 
-            <button className="topbar-icon-btn" title="Help">
+            <button className="topbar-icon-btn" title="Help" onClick={handleHelpClick}>
               ❓
             </button>
 

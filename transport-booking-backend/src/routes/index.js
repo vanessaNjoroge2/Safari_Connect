@@ -10,6 +10,7 @@ import busRoutes from "../modules/buses/bus.routes.js";
 import tripRoutes from "../modules/trips/trip.routes.js";
 import bookingRoutes from "../modules/bookings/booking.routes.js";
 import paymentRoutes from "../modules/payments/payment.routes.js";
+import portalRoutes from "../modules/portal/portal.routes.js";
 
 const router = Router();
 
@@ -23,5 +24,6 @@ router.use("/buses", busRoutes);
 router.use("/trips", tripRoutes);
 router.use("/bookings", bookingRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/portal", portalRoutes);
 
 export default router;

@@ -20,6 +20,8 @@ import Ticket           from './pages/passenger/Ticket';
 import MyBookings         from './pages/passenger/MyBookings';
 import PassengerPayments  from './pages/passenger/Payments';
 import Profile            from './pages/passenger/Profile';
+import PassengerNotifications from './pages/passenger/Notifications';
+import PassengerHelp from './pages/passenger/Help';
 
 // Carrier pages
 import CarrierHome  from './pages/carrier/Home';
@@ -39,6 +41,8 @@ import OwnerPayments  from './pages/owner/Payments';
 import OwnerAnalytics from './pages/owner/Analytics';
 import OwnerCustomers from './pages/owner/Customers';
 import OwnerSettings  from './pages/owner/Settings';
+import OwnerNotifications from './pages/owner/Notifications';
+import OwnerHelp from './pages/owner/Help';
 
 // Admin pages
 import AdminDashboard  from './pages/admin/Dashboard';
@@ -50,6 +54,8 @@ import AdminPayments   from './pages/admin/Payments';
 import AdminAnalytics  from './pages/admin/Analytics';
 import AdminSupport    from './pages/admin/Support';
 import AdminSettings   from './pages/admin/Settings';
+import AdminNotifications from './pages/admin/Notifications';
+import AdminHelp from './pages/admin/Help';
 
 export default function App() {
   return (
@@ -76,6 +82,8 @@ export default function App() {
               <Route path="/passenger/mybookings" element={<RequireAuth role="passenger"><MyBookings /></RequireAuth>} />
               <Route path="/passenger/payments"   element={<RequireAuth role="passenger"><PassengerPayments /></RequireAuth>} />
               <Route path="/passenger/profile"    element={<RequireAuth role="passenger"><Profile /></RequireAuth>} />
+              <Route path="/passenger/notifications" element={<RequireAuth role="passenger"><PassengerNotifications /></RequireAuth>} />
+              <Route path="/passenger/help" element={<RequireAuth role="passenger"><PassengerHelp /></RequireAuth>} />
 
               {/* ── Carrier (passenger access) ───────────────────────────── */}
               <Route path="/carrier"          element={<RequireAuth role="passenger"><CarrierHome /></RequireAuth>} />
@@ -95,6 +103,8 @@ export default function App() {
               <Route path="/owner/analytics"  element={<RequireAuth role="owner"><OwnerAnalytics /></RequireAuth>} />
               <Route path="/owner/customers"  element={<RequireAuth role="owner"><OwnerCustomers /></RequireAuth>} />
               <Route path="/owner/settings"   element={<RequireAuth role="owner"><OwnerSettings /></RequireAuth>} />
+              <Route path="/owner/notifications" element={<RequireAuth role="owner"><OwnerNotifications /></RequireAuth>} />
+              <Route path="/owner/help" element={<RequireAuth role="owner"><OwnerHelp /></RequireAuth>} />
 
               {/* ── Admin ───────────────────────────────────────────────── */}
               <Route path="/admin/dashboard"  element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>} />
@@ -106,6 +116,8 @@ export default function App() {
               <Route path="/admin/analytics"  element={<RequireAuth role="admin"><AdminAnalytics /></RequireAuth>} />
               <Route path="/admin/support"    element={<RequireAuth role="admin"><AdminSupport /></RequireAuth>} />
               <Route path="/admin/settings"   element={<RequireAuth role="admin"><AdminSettings /></RequireAuth>} />
+              <Route path="/admin/notifications" element={<RequireAuth role="admin"><AdminNotifications /></RequireAuth>} />
+              <Route path="/admin/help" element={<RequireAuth role="admin"><AdminHelp /></RequireAuth>} />
 
               {/* ── Fallback ─────────────────────────────────────────────── */}
               <Route path="*" element={<Navigate to="/" replace />} />
