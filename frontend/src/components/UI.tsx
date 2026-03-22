@@ -424,6 +424,13 @@ interface MapEmbedProps {
   label?: string;
   pickup?: string;
   dropoff?: string;
+  livePosition?: {
+    lat: number;
+    lon: number;
+    accuracy?: number | null;
+    updatedAt?: number;
+    source?: 'gps' | 'simulated';
+  } | null;
 }
 
 const LOCATION_COORDS: Record<string, { lat: number; lon: number; label: string }> = {
@@ -465,17 +472,22 @@ export function MapEmbed({
   label = 'Interactive map preview',
   pickup,
   dropoff,
+  livePosition,
 }: MapEmbedProps) {
   const inferred = inferRouteFromLabel(label);
   const pickupPoint = resolveLocation(pickup) || inferred.pickup;
   const dropoffPoint = resolveLocation(dropoff) || inferred.dropoff;
 
-  const center = pickupPoint && dropoffPoint
+  const fallbackCenter = pickupPoint && dropoffPoint
     ? {
         lat: (pickupPoint.lat + dropoffPoint.lat) / 2,
         lon: (pickupPoint.lon + dropoffPoint.lon) / 2,
       }
     : pickupPoint || dropoffPoint || LOCATION_COORDS.nairobi;
+
+  const center = livePosition
+    ? { lat: livePosition.lat, lon: livePosition.lon }
+    : fallbackCenter;
 
   const latSpan = pickupPoint && dropoffPoint ? Math.max(0.03, Math.abs(pickupPoint.lat - dropoffPoint.lat) + 0.04) : 0.08;
   const lonSpan = pickupPoint && dropoffPoint ? Math.max(0.03, Math.abs(pickupPoint.lon - dropoffPoint.lon) + 0.05) : 0.1;
@@ -487,6 +499,7 @@ export function MapEmbed({
 
   const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${minLon}%2C${minLat}%2C${maxLon}%2C${maxLat}&layer=mapnik&marker=${center.lat}%2C${center.lon}`;
   const openUrl = `https://www.openstreetmap.org/?mlat=${center.lat}&mlon=${center.lon}#map=12/${center.lat}/${center.lon}`;
+  const sourceLabel = livePosition?.source === 'gps' ? 'GPS' : livePosition?.source === 'simulated' ? 'Simulated' : null;
 
   return (
     <div className="map-embed" style={{ height }}>
@@ -499,6 +512,16 @@ export function MapEmbed({
       />
       <div className="map-embed-overlay">
         <div className="map-embed-chip">Live map · OpenStreetMap</div>
+        {livePosition && (
+          <div className="map-embed-points" style={{ marginTop: 8 }}>
+            <span className="map-embed-point pickup">
+              Tracker: {sourceLabel || 'Live'} · {livePosition.lat.toFixed(5)}, {livePosition.lon.toFixed(5)}
+            </span>
+            {typeof livePosition.accuracy === 'number' && (
+              <span className="map-embed-point dropoff">Accuracy: {Math.round(livePosition.accuracy)}m</span>
+            )}
+          </div>
+        )}
         {(pickupPoint || dropoffPoint) && (
           <div className="map-embed-points">
             {pickupPoint && <span className="map-embed-point pickup">Pickup: {pickupPoint.label}</span>}

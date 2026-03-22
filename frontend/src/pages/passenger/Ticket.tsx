@@ -1,10 +1,32 @@
 ﻿import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
-import { Steps, Badge } from '../../components/UI';
+import { Steps, Badge, MapEmbed } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
 import { getBookingByIdApi } from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
+import { useLiveGpsTracking } from '../../hooks/useLiveGpsTracking';
+
+const KNOWN_POINTS: Record<string, { lat: number; lon: number }> = {
+  nairobi: { lat: -1.286389, lon: 36.817223 },
+  karen: { lat: -1.319, lon: 36.707 },
+  mombasa: { lat: -4.0435, lon: 39.6682 },
+  kisumu: { lat: -0.1022, lon: 34.7617 },
+  nakuru: { lat: -0.3031, lon: 36.08 },
+  eldoret: { lat: 0.5143, lon: 35.2698 },
+  westlands: { lat: -1.267, lon: 36.81 },
+  kilimani: { lat: -1.2921, lon: 36.7836 },
+  thika: { lat: -1.0332, lon: 37.0692 },
+};
+
+function resolvePoint(name?: string | null) {
+  if (!name) return KNOWN_POINTS.nairobi;
+  const input = name.toLowerCase();
+  for (const [key, point] of Object.entries(KNOWN_POINTS)) {
+    if (input.includes(key)) return point;
+  }
+  return KNOWN_POINTS.nairobi;
+}
 
 export default function Ticket() {
   const navigate = useNavigate();
@@ -56,6 +78,14 @@ export default function Ticket() {
     ? `${liveTicket.seat?.seatNumber ?? '-'} · ${liveTicket.seat?.seatClass ?? ''}`
     : `${booking.selectedSeat ?? '-'} · ${booking.seatClass ?? '-'}`;
   const amount = liveTicket?.amount ?? booking.fare ?? 0;
+  const fromName = liveTicket?.trip?.route?.origin || booking.searchQuery?.from || 'Nairobi';
+  const toName = liveTicket?.trip?.route?.destination || booking.searchQuery?.to || 'Nairobi';
+  const gps = useLiveGpsTracking({
+    start: resolvePoint(fromName),
+    end: resolvePoint(toName),
+    simulateStep: 0.09,
+    simulateIntervalMs: 4500,
+  });
 
   return (
     <DashboardLayout title="Booking confirmed" subtitle="Your e-ticket is ready">
@@ -127,6 +157,21 @@ export default function Ticket() {
             Book another trip
           </button>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20 }}>
+        <div className="card-title">Travel GPS tracking</div>
+        <p className="text-sm text-muted" style={{ marginBottom: 10 }}>
+          Route: {fromName} to {toName} · Tracker source: {gps.position.source === 'gps' ? 'Live GPS' : 'Simulated fallback'}
+        </p>
+        <MapEmbed
+          height={280}
+          pickup={fromName}
+          dropoff={toName}
+          label={`${fromName} → ${toName}`}
+          livePosition={gps.position}
+        />
+        {gps.trackingError && <p className="text-xs" style={{ marginTop: 8, color: 'var(--warning)' }}>{gps.trackingError}</p>}
       </div>
     </DashboardLayout>
   );

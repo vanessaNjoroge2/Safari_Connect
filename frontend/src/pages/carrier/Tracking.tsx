@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { MapEmbed } from '../../components/UI';
+import { useLiveGpsTracking } from '../../hooks/useLiveGpsTracking';
 
 const STATUS_STEPS = ['Order confirmed','Driver assigned','Package picked up','En route to drop-off','Delivered'];
 
@@ -9,6 +10,13 @@ export default function LiveTracking() {
   const navigate = useNavigate();
   const [progress, setProgress] = useState(0);
   const [eta,      setEta]      = useState(28);
+
+  const tracking = useLiveGpsTracking({
+    start: { lat: -1.286389, lon: 36.817223 },
+    end: { lat: -1.319, lon: 36.707 },
+    simulateStep: 0.16,
+    simulateIntervalMs: 3500,
+  });
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -51,8 +59,30 @@ export default function LiveTracking() {
             label="Driver position updates every 4 seconds in production"
             pickup="Nairobi CBD"
             dropoff="Karen"
+            livePosition={tracking.position}
           />
-          <p className="text-xs text-muted mt-2">🟢 Pickup · 🔴 Drop-off · 🟡 Driver (live GPS)</p>
+          <p className="text-xs text-muted mt-2">
+            🟢 Pickup · 🔴 Drop-off · 🟡 Driver ({tracking.position.source === 'gps' ? 'live GPS' : 'simulated fallback'})
+          </p>
+          <div className="card" style={{ marginTop: 10, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+              <span style={{ color: 'var(--gray-500)' }}>Tracker status</span>
+              <strong>{tracking.position.source === 'gps' ? 'GPS active' : 'Simulation active'}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, marginTop: 6 }}>
+              <span style={{ color: 'var(--gray-500)' }}>Coordinates</span>
+              <strong>{tracking.position.lat.toFixed(5)}, {tracking.position.lon.toFixed(5)}</strong>
+            </div>
+            {typeof tracking.position.accuracy === 'number' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, marginTop: 6 }}>
+                <span style={{ color: 'var(--gray-500)' }}>Accuracy</span>
+                <strong>{Math.round(tracking.position.accuracy)}m</strong>
+              </div>
+            )}
+            {tracking.trackingError && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--warning)' }}>{tracking.trackingError}</div>
+            )}
+          </div>
         </div>
 
         {/* Side panel */}
