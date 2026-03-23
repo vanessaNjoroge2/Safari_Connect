@@ -262,3 +262,51 @@ export const getBookingById = async (userId, bookingId) => {
 
   return booking;
 };
+
+export const getBookingAutofill = async (userId) => {
+  const [latestBooking, user] = await Promise.all([
+    prisma.booking.findFirst({
+      where: { userId },
+      include: {
+        trip: {
+          include: {
+            route: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+      },
+    }),
+  ]);
+
+  const passenger = {
+    firstName: latestBooking?.firstName || user?.firstName || "",
+    lastName: latestBooking?.lastName || user?.lastName || "",
+    idNumber: latestBooking?.nationalId || "",
+    residence: latestBooking?.residence || "",
+    email: latestBooking?.email || user?.email || "",
+  };
+
+  return {
+    source: latestBooking ? "recent_booking" : "account_profile",
+    passenger,
+    phone: latestBooking?.phone || user?.phone || "",
+    lastRoute: latestBooking?.trip?.route
+      ? {
+          from: latestBooking.trip.route.origin,
+          to: latestBooking.trip.route.destination,
+        }
+      : null,
+    lastTravelDate: latestBooking?.trip?.departureTime || null,
+  };
+};

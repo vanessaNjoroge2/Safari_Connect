@@ -65,6 +65,12 @@ function fallbackHealth() {
 function fallbackChat(payload = {}) {
   const text = String(payload?.text || "").toLowerCase();
   const isSw = String(payload?.language || "en").toLowerCase().startsWith("sw");
+  const role = String(payload?.role || "USER").toUpperCase();
+  const context = payload?.context || {};
+
+  const wantsBookingHelp = /(help\s+me\s+book|book\s+for\s+me|assist\s+booking|nisaidie\s+booking|nisaidie\s+kuweka\s+booking|endelea\s+booking)/i.test(
+    String(payload?.text || "")
+  );
 
   const sw = {
     base: "Niko tayari kusaidia. Nipatie route, tarehe/saa na bajeti ili nikupatie chaguo bora.",
@@ -86,9 +92,41 @@ function fallbackChat(payload = {}) {
   if (text.includes("delay") || text.includes("traffic") || text.includes("uchelew")) message = hints.delay;
   if (text.includes("fraud") || text.includes("anomaly") || text.includes("suspicious")) message = hints.fraud;
 
+  let action = null;
+  if (role === "USER" && wantsBookingHelp && context?.scope === "passenger") {
+    const recent = Array.isArray(context?.recentBookings) ? context.recentBookings : [];
+    const nextTrip = context?.nextTrip || null;
+
+    const fromRoute = (recent[0]?.route || "").split("->").map((part) => part.trim());
+    const fallbackOrigin = fromRoute[0] || nextTrip?.origin || null;
+    const fallbackDestination = fromRoute[1] || nextTrip?.destination || null;
+    const fallbackDate = nextTrip?.departureTime
+      ? new Date(nextTrip.departureTime).toISOString().slice(0, 10)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    if (fallbackOrigin && fallbackDestination) {
+      action = {
+        type: "prefill_search_form",
+        params: {
+          category: "bus",
+          from: fallbackOrigin,
+          to: fallbackDestination,
+          date: fallbackDate,
+          maxFare: Number(context?.pricing?.avgFare) || undefined,
+          auto: 0,
+        },
+      };
+
+      message = isSw
+        ? `Nimejaza form ya kutafuta safari kwa data yako halisi ya akaunti (${fallbackOrigin} hadi ${fallbackDestination}). Thibitisha au badilisha kisha uendelee kuhifadhi.`
+        : `I have prefilled your trip form using your real account history (${fallbackOrigin} to ${fallbackDestination}). Confirm or edit it, then continue booking.`;
+    }
+  }
+
   return {
     intent: "decision_guidance",
     message,
+    action,
     source: "fallback",
     modelUsed: null,
     disclaimer: "Generated from deterministic fallback because upstream AI was unavailable.",
@@ -193,6 +231,184 @@ function fallbackAssist(payload = {}) {
   };
 }
 
+const KNOWN_COORDS = {
+  nairobi: { lat: -1.286389, lon: 36.817223 },
+  karen: { lat: -1.319, lon: 36.707 },
+  "upper hill": { lat: -1.298, lon: 36.812 },
+  westlands: { lat: -1.267, lon: 36.81 },
+  kilimani: { lat: -1.2921, lon: 36.7836 },
+  nakuru: { lat: -0.3031, lon: 36.08 },
+  mombasa: { lat: -4.0435, lon: 39.6682 },
+  kisumu: { lat: -0.1022, lon: 34.7617 },
+  eldoret: { lat: 0.5143, lon: 35.2698 },
+  thika: { lat: -1.0332, lon: 37.0692 },
+};
+
+function resolveLocationCoord(value = "") {
+  const lower = String(value || "").toLowerCase();
+  for (const [name, coord] of Object.entries(KNOWN_COORDS)) {
+    if (lower.includes(name)) return coord;
+  }
+  return null;
+}
+
+function parseRouteEndpoints(route = "") {
+  const parts = String(route || "")
+    .split(/->|→|-/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length < 2) {
+    return { origin: null, destination: null };
+  }
+
+  return {
+    origin: parts[0],
+    destination: parts[1],
+  };
+}
+
+function hourBucketRisk(hour) {
+  if (hour >= 6 && hour <= 9) return 0.75;
+  if (hour >= 16 && hour <= 20) return 0.78;
+  if (hour >= 10 && hour <= 15) return 0.5;
+  return 0.28;
+}
+
+function routeTrafficBoost(route = "") {
+  const lower = String(route || "").toLowerCase();
+  if (!lower) return 0;
+  if (lower.includes("nairobi") && lower.includes("mombasa")) return 0.12;
+  if (lower.includes("nairobi") && (lower.includes("nakuru") || lower.includes("eldoret"))) return 0.1;
+  if (lower.includes("westlands") || lower.includes("upper hill") || lower.includes("thika")) return 0.08;
+  return 0.03;
+}
+
+function clamp01(value, fallback = 0) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return fallback;
+  if (v <= 0) return 0;
+  if (v >= 1) return 1;
+  return v;
+}
+
+function resolveTrafficRisk({ departureTime, route }) {
+  const departure = departureTime ? new Date(departureTime) : new Date();
+  const hour = Number.isNaN(departure.getTime()) ? new Date().getHours() : departure.getHours();
+  const weekday = Number.isNaN(departure.getTime()) ? new Date().getDay() : departure.getDay();
+
+  let score = hourBucketRisk(hour) + routeTrafficBoost(route);
+  if (weekday === 0 || weekday === 6) {
+    score -= 0.08;
+  }
+
+  return {
+    score: clamp01(score, 0.4),
+    source: "heuristic_live_adapter",
+  };
+}
+
+async function resolveWeatherRisk({ departureTime, route }) {
+  const { origin, destination } = parseRouteEndpoints(route);
+  const originCoord = resolveLocationCoord(origin);
+  const destinationCoord = resolveLocationCoord(destination);
+
+  const fallbackCoord = KNOWN_COORDS.nairobi;
+  const center = originCoord && destinationCoord
+    ? {
+        lat: (originCoord.lat + destinationCoord.lat) / 2,
+        lon: (originCoord.lon + destinationCoord.lon) / 2,
+      }
+    : originCoord || destinationCoord || fallbackCoord;
+
+  const dateObj = departureTime ? new Date(departureTime) : new Date();
+  const targetHour = Number.isNaN(dateObj.getTime()) ? new Date().getHours() : dateObj.getHours();
+  const dateIso = Number.isNaN(dateObj.getTime())
+    ? new Date().toISOString().slice(0, 10)
+    : dateObj.toISOString().slice(0, 10);
+
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${center.lat}&longitude=${center.lon}&hourly=precipitation_probability,windspeed_10m&start_date=${dateIso}&end_date=${dateIso}&timezone=Africa%2FNairobi`;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    const response = await fetch(url, { signal: controller.signal }).finally(() => {
+      clearTimeout(timer);
+    });
+    const json = await response.json().catch(() => null);
+    const hourly = json?.hourly;
+    const times = Array.isArray(hourly?.time) ? hourly.time : [];
+    const precip = Array.isArray(hourly?.precipitation_probability)
+      ? hourly.precipitation_probability
+      : [];
+    const wind = Array.isArray(hourly?.windspeed_10m) ? hourly.windspeed_10m : [];
+
+    if (!times.length || !precip.length) {
+      throw new Error("Missing hourly weather data");
+    }
+
+    let bestIdx = 0;
+    let minDelta = Number.POSITIVE_INFINITY;
+    times.forEach((time, idx) => {
+      const t = new Date(time);
+      const delta = Math.abs(t.getHours() - targetHour);
+      if (delta < minDelta) {
+        minDelta = delta;
+        bestIdx = idx;
+      }
+    });
+
+    const precipValue = Number(precip[bestIdx] || 0);
+    const windValue = Number(wind[bestIdx] || 0);
+    const score = clamp01((precipValue / 100) * 0.68 + (windValue / 80) * 0.32, 0.3);
+
+    return {
+      score,
+      source: "open_meteo_live",
+      details: {
+        precipitationProbability: precipValue,
+        windSpeedKph: windValue,
+      },
+    };
+  } catch {
+    return {
+      score: 0.32,
+      source: "open_meteo_fallback",
+      details: null,
+    };
+  }
+}
+
+async function enrichAssistPayload(payload = {}) {
+  const weather = await resolveWeatherRisk({
+    departureTime: payload?.departureTime,
+    route: payload?.route,
+  });
+  const traffic = resolveTrafficRisk({
+    departureTime: payload?.departureTime,
+    route: payload?.route,
+  });
+
+  const routeRisk = clamp01(
+    payload?.riskFactors?.routeRisk,
+    payload?.route ? 0.35 : 0.2
+  );
+
+  return {
+    ...payload,
+    riskFactors: {
+      ...(payload?.riskFactors || {}),
+      weatherRisk: weather.score,
+      trafficRisk: traffic.score,
+      routeRisk,
+    },
+    liveSignals: {
+      weather,
+      traffic,
+    },
+  };
+}
+
 export const getAiHealth = async () => {
   try {
     return await callAi("/health", null, "GET");
@@ -202,10 +418,12 @@ export const getAiHealth = async () => {
 };
 
 export const getAiAssist = async (payload) => {
+  const enrichedPayload = await enrichAssistPayload(payload);
+
   try {
-    return await callAi("/v1/decision/assist", payload);
+    return await callAi("/v1/decision/assist", enrichedPayload);
   } catch {
-    return fallbackAssist(payload);
+    return fallbackAssist(enrichedPayload);
   }
 };
 

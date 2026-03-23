@@ -353,6 +353,31 @@ export async function getMyBookingsApi() {
   return apiRequest<MyBookingsEnvelope>('/api/bookings/me');
 }
 
+export type BookingAutofillEnvelope = {
+  success: boolean;
+  message: string;
+  data: {
+    source: 'recent_booking' | 'account_profile';
+    passenger: {
+      firstName: string;
+      lastName: string;
+      idNumber: string;
+      residence: string;
+      email: string;
+    };
+    phone: string;
+    lastRoute: null | {
+      from: string;
+      to: string;
+    };
+    lastTravelDate: string | null;
+  };
+};
+
+export async function getBookingAutofillApi() {
+  return apiRequest<BookingAutofillEnvelope>('/api/bookings/me/autofill');
+}
+
 export type PortalNotificationsEnvelope = {
   success: boolean;
   message: string;
@@ -1341,6 +1366,12 @@ export async function aiAssistApi(payload: {
   intent?: {
     maxBudget?: number;
     maxTravelMinutes?: number;
+    behavior?: {
+      preferredRoutes?: string[];
+      preferredSaccos?: string[];
+      preferredBudgetKes?: number;
+      preferredDepartureHour?: number;
+    };
   };
 }) {
   return apiRequest<AiAssistEnvelope>('/api/ai/assist', {

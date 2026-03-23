@@ -79,6 +79,15 @@ export default function PassengerHome() {
       setContext(ctx);
 
       const topTrip = ctx.nextTrip || ctx.trips[0] || null;
+      const recent = ctx.recentBookings || [];
+      const preferredRoutes = Array.from(new Set(recent.map((b) => b.route))).slice(0, 4);
+      const preferredSaccos = Array.from(new Set(recent.map((b) => b.saccoName))).slice(0, 3);
+      const preferredBudgetKes = recent.length
+        ? Math.round(recent.reduce((sum, b) => sum + (Number(b.amount) || 0), 0) / recent.length)
+        : undefined;
+      const preferredDepartureHour = topTrip
+        ? new Date(topTrip.departureTime).getHours()
+        : undefined;
 
       const assistResponse = await aiAssistApi({
         prompt: 'Generate concise passenger recommendation, pricing, and delay insight from backend trip context only.',
@@ -106,10 +115,18 @@ export default function PassengerHome() {
           price: trip.price,
           travelMinutes: trip.travelMinutes,
           reliabilityScore: trip.reliabilityScore,
+          departureTime: trip.departureTime,
+          saccoName: trip.saccoName,
         })),
         intent: {
           maxBudget: Math.max(ctx.pricing.avgFare || 0, 1000),
           maxTravelMinutes: 300,
+          behavior: {
+            preferredRoutes,
+            preferredSaccos,
+            preferredBudgetKes,
+            preferredDepartureHour,
+          },
         },
       });
 
@@ -146,7 +163,7 @@ export default function PassengerHome() {
           onAction: topTrip
             ? () =>
                 navigate(
-                  `/passenger/search?cat=bus&from=${encodeURIComponent(topTrip.origin)}&to=${encodeURIComponent(topTrip.destination)}&auto=1`
+                  `/passenger/search?cat=bus&from=${encodeURIComponent(topTrip.origin)}&to=${encodeURIComponent(topTrip.destination)}${preferredBudgetKes ? `&maxFare=${preferredBudgetKes}` : ''}&auto=1`
                 )
             : undefined,
           accentColor: 'var(--brand)',

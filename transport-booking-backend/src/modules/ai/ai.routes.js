@@ -7,7 +7,7 @@ const router = Router();
 router.get("/health", health);
 router.get("/context", authenticate, context);
 router.post("/assist", assist);
-router.post("/chat", chat);
+router.post("/chat", authenticate, chat);
 router.post("/voice", voice);
 
 export default router;

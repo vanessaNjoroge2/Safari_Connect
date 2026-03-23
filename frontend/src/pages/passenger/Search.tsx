@@ -19,6 +19,37 @@ function toFrontendSeatClass(classes: Array<'VIP' | 'FIRST_CLASS' | 'BUSINESS'>)
   return Array.from(mapped);
 }
 
+function mapTrips(
+  trips: Awaited<ReturnType<typeof searchTripsApi>>['data'],
+  maxFare?: number
+) {
+  const mapped = trips.map((trip, idx) => ({
+    id: trip.id,
+    busId: trip.bus.id,
+    routeId: trip.route.id,
+    saccoName: trip.sacco.name,
+    plateInfo: `${trip.bus.plateNumber} · ${trip.bus.seatCapacity} seats`,
+    rating: 0,
+    departureTime: new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+    arrivalTime: new Date(trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
+    duration: trip.duration,
+    price: Number(trip.basePrice),
+    priceLabel: 'Live fare',
+    seatsLeft: trip.availableSeatsCount,
+    classes: toFrontendSeatClass(trip.seatClasses),
+    highlighted: idx === 0,
+  }));
+
+  const filtered = Number.isFinite(maxFare)
+    ? mapped.filter((trip) => trip.price <= Number(maxFare))
+    : mapped;
+
+  return filtered.map((trip, idx) => ({
+    ...trip,
+    highlighted: idx === 0,
+  }));
+}
+
 export default function Search() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -27,13 +58,15 @@ export default function Search() {
   const [isSearching, setIsSearching] = useState(false);
   const autoTriggeredRef = useRef(false);
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const maxFareParam = Number(params.get('maxFare'));
+  const parsedMaxFare = Number.isFinite(maxFareParam) ? maxFareParam : undefined;
 
   const [form, setForm] = useState<SearchQuery>({
     category:   (params.get('cat') ?? 'bus') as Category,
     from:       params.get('from') ?? '',
     to:         params.get('to') ?? '',
     date:       params.get('date') ?? tomorrow,
-    time:       '08:00',
+    time:       params.get('time') ?? '08:00',
     tripType:   'one-way',
     returnDate: '',
     returnTime: '17:00',
@@ -61,22 +94,7 @@ export default function Search() {
     setIsSearching(true);
     try {
       const result = await searchTripsApi(form);
-      const mapped = result.data.map((trip, idx) => ({
-        id: trip.id,
-        busId: trip.bus.id,
-        routeId: trip.route.id,
-        saccoName: trip.sacco.name,
-        plateInfo: `${trip.bus.plateNumber} · ${trip.bus.seatCapacity} seats`,
-        rating: 0,
-        departureTime: new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
-        arrivalTime: new Date(trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
-        duration: trip.duration,
-        price: Number(trip.basePrice),
-        priceLabel: 'Live fare',
-        seatsLeft: trip.availableSeatsCount,
-        classes: toFrontendSeatClass(trip.seatClasses),
-        highlighted: idx === 0,
-      }));
+      const mapped = mapTrips(result.data, parsedMaxFare);
 
       setSearch(form);
       setSearchResults(mapped);
@@ -107,22 +125,7 @@ export default function Search() {
       setIsSearching(true);
       try {
         const result = await searchTripsApi(form);
-        const mapped = result.data.map((trip, idx) => ({
-          id: trip.id,
-          busId: trip.bus.id,
-          routeId: trip.route.id,
-          saccoName: trip.sacco.name,
-          plateInfo: `${trip.bus.plateNumber} · ${trip.bus.seatCapacity} seats`,
-          rating: 0,
-          departureTime: new Date(trip.departureTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
-          arrivalTime: new Date(trip.arrivalTime).toLocaleTimeString('en-KE', { hour: 'numeric', minute: '2-digit' }),
-          duration: trip.duration,
-          price: Number(trip.basePrice),
-          priceLabel: 'Live fare',
-          seatsLeft: trip.availableSeatsCount,
-          classes: toFrontendSeatClass(trip.seatClasses),
-          highlighted: idx === 0,
-        }));
+        const mapped = mapTrips(result.data, parsedMaxFare);
 
         setSearch(form);
         setSearchResults(mapped);
@@ -135,7 +138,7 @@ export default function Search() {
     };
 
     void run();
-  }, [form, navigate, params, setSearch, setSearchResults, toast]);
+  }, [form, navigate, params, parsedMaxFare, setSearch, setSearchResults, toast]);
 
   return (
     <DashboardLayout title="Search trips" subtitle="Find available transport on your route">

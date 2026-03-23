@@ -45,7 +45,12 @@ export const assist = async (req, res, next) => {
 export const chat = async (req, res, next) => {
   try {
     const payload = aiChatSchema.parse(req.body || {});
-    const data = await getAiChat(payload);
+    const chatContext = await getAiContext(req.user);
+    const data = await getAiChat({
+      ...payload,
+      role: req.user?.role,
+      context: chatContext,
+    });
 
     return res.status(200).json({
       success: true,

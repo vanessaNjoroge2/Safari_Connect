@@ -438,6 +438,95 @@ function buildProfessionalRecommendation(language, context, intent) {
   return `Great. For ${route} on ${date} around ${time} with a KES ${budget} budget, you are in a strong range for standard coach options. Tell me your priority (cheapest, fastest, or reliable) and I will provide one clear recommendation.`;
 }
 
+function buildSearchAction(context, intent) {
+  if (!context.origin || !context.destination || !context.travelDate) {
+    return null;
+  }
+
+  return {
+    type: "prefill_search_form",
+    params: {
+      category: "bus",
+      from: context.origin,
+      to: context.destination,
+      date: context.travelDate,
+      time: context.departureTime || undefined,
+      maxFare: context.budgetKes || undefined,
+      priority: context.priority || (intent === "pricing" ? "cheapest" : undefined),
+      auto: 0,
+    },
+    confidence: 0.86,
+  };
+}
+
+function wantsBookingHelp(text) {
+  const lower = String(text || "").toLowerCase();
+  const terms = [
+    "help me book",
+    "book for me",
+    "assist booking",
+    "continue booking",
+    "go ahead and book",
+    "nisaidie booking",
+    "nisaidie kuweka booking",
+    "endelea booking",
+  ];
+
+  return terms.some((term) => lower.includes(term));
+}
+
+function parseRouteLabel(route) {
+  const parts = String(route || "")
+    .split(/->|→/)
+    .map((p) => cleanPlace(p))
+    .filter(Boolean);
+
+  if (parts.length < 2) {
+    return { origin: null, destination: null };
+  }
+
+  return {
+    origin: parts[0],
+    destination: parts[1],
+  };
+}
+
+function deriveDbContext(dbContext = {}) {
+  if (!dbContext || dbContext.scope !== "passenger") {
+    return {
+      origin: null,
+      destination: null,
+      travelDate: null,
+      departureTime: null,
+      budgetKes: null,
+      priority: null,
+    };
+  }
+
+  const recentBooking = Array.isArray(dbContext.recentBookings)
+    ? dbContext.recentBookings[0] || null
+    : null;
+  const nextTrip = dbContext.nextTrip || null;
+  const recentRoute = parseRouteLabel(recentBooking?.route || "");
+
+  const nextDeparture = nextTrip?.departureTime ? new Date(nextTrip.departureTime) : null;
+  const safeDate = nextDeparture && !Number.isNaN(nextDeparture.getTime())
+    ? nextDeparture.toISOString().slice(0, 10)
+    : null;
+  const safeTime = nextDeparture && !Number.isNaN(nextDeparture.getTime())
+    ? `${String(nextDeparture.getHours()).padStart(2, "0")}:${String(nextDeparture.getMinutes()).padStart(2, "0")}`
+    : null;
+
+  return {
+    origin: recentRoute.origin || nextTrip?.origin || null,
+    destination: recentRoute.destination || nextTrip?.destination || null,
+    travelDate: safeDate,
+    departureTime: safeTime,
+    budgetKes: Number(dbContext?.pricing?.avgFare) || Number(recentBooking?.amount) || null,
+    priority: null,
+  };
+}
+
 function asksForKnownSlots(message) {
   const text = String(message || "").toLowerCase();
   const patterns = [
@@ -507,7 +596,7 @@ function appendSessionMessages(sessionId, additions) {
   pruneStore();
 }
 
-async function respondToPrompt({ text, language = "en", sessionId }) {
+async function respondToPrompt({ text, language = "en", sessionId, role = "USER", context = null }) {
   const userText = sanitizeText(text, 500);
   const resolvedSessionId = sanitizeSessionId(sessionId);
   const history = getSessionMessages(resolvedSessionId);
@@ -516,13 +605,17 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
   const hints = language === "sw" ? swahiliHints : englishHints;
   const fallbackMessage = hints[intent] || hints.recommendation;
   const userHistory = history.filter((item) => item.role === "user");
-  const conversationContext = buildConversationContext([...userHistory, { text: userText }]);
+  const dbContext = deriveDbContext(context);
+  const inferredContext = buildConversationContext([...userHistory, { text: userText }]);
+  const conversationContext = mergeContext(dbContext, inferredContext);
+  const allowBookingAction = String(role || "USER").toUpperCase() === "USER" && wantsBookingHelp(userText);
   const missing = requiredMissing(conversationContext);
 
   if (!userText) {
     return {
       intent,
       message: fallbackMessage,
+      action: null,
       source: "fallback",
       modelUsed: null,
       sessionId: resolvedSessionId,
@@ -545,6 +638,7 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
     return {
       intent,
       message: trustMessage,
+      action: null,
       source: "fallback",
       modelUsed: null,
       sessionId: resolvedSessionId,
@@ -555,6 +649,7 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
 
   if ((intent === "recommendation" || intent === "pricing") && missing.length === 0) {
     const proMessage = buildProfessionalRecommendation(language, conversationContext, intent);
+    const action = buildSearchAction(conversationContext, intent);
 
     appendSessionMessages(resolvedSessionId, [
       { role: "user", text: userText },
@@ -565,6 +660,7 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
     return {
       intent,
       message: proMessage,
+      action: allowBookingAction ? action : null,
       source: "fallback",
       modelUsed: null,
       sessionId: resolvedSessionId,
@@ -585,6 +681,7 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
     return {
       intent,
       message: clarify,
+      action: null,
       source: "fallback",
       modelUsed: null,
       sessionId: resolvedSessionId,
@@ -605,6 +702,7 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
     historyBlock || "No previous messages.",
     `Known travel context: ${JSON.stringify(conversationContext)}.`,
     `Known user priority: ${conversationContext.priority || "none"}.`,
+    `Booking-action requested by user: ${allowBookingAction ? "yes" : "no"}.`,
     `Missing travel fields: ${missing.join(", ") || "none"}.`,
     "Never ask for details that already exist in known travel context.",
     "Respond in 1-2 concise sentences and provide practical guidance.",
@@ -631,6 +729,9 @@ async function respondToPrompt({ text, language = "en", sessionId }) {
   return {
     intent,
     message: finalMessage,
+    action: allowBookingAction && (intent === "recommendation" || intent === "pricing") && missing.length === 0
+      ? buildSearchAction(conversationContext, intent)
+      : null,
     source: result.source,
     modelUsed: result.modelUsed,
     sessionId: resolvedSessionId,

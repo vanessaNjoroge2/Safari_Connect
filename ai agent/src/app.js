@@ -126,7 +126,9 @@ app.post("/v1/chat/respond", async (req, res) => {
     const result = await respondToPrompt({
       text: body.text,
       language,
-      sessionId: body.sessionId
+      sessionId: body.sessionId,
+      role: body.role,
+      context: body.context,
     });
     res.json({ ...result, meta: buildMeta(req) });
   } catch (error) {

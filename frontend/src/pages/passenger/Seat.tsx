@@ -4,7 +4,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import { Steps, Modal } from '../../components/UI';
 import { useBooking } from '../../context/BookingContext';
 import type { SeatClass, PassengerDetails, TripSeat } from '../../types';
-import { getTripSeatsApi } from '../../lib/api';
+import { getBookingAutofillApi, getTripSeatsApi } from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
 
 const CLASS_META: Record<
@@ -72,6 +72,31 @@ export default function SeatSelection() {
   const [pax, setPax] = useState<PassengerDetails>(EMPTY_PAX);
   const [paxSaved, setPaxSaved] = useState(false);
   const [loadingSeats, setLoadingSeats] = useState(false);
+  const [autofillApplied, setAutofillApplied] = useState(false);
+
+  useEffect(() => {
+    if (booking.passenger) {
+      setPax(booking.passenger);
+      setAutofillApplied(true);
+      return;
+    }
+
+    if (autofillApplied) return;
+
+    void (async () => {
+      try {
+        const result = await getBookingAutofillApi();
+        setPax((current) => ({
+          ...current,
+          ...result.data.passenger,
+        }));
+      } catch {
+        // Autofill should not block booking flow.
+      } finally {
+        setAutofillApplied(true);
+      }
+    })();
+  }, [autofillApplied, booking.passenger]);
 
   useEffect(() => {
     const tripId = booking.selectedTripId || booking.selectedBus?.id;

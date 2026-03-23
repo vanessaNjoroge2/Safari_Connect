@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { BadgeVariant, SeatClass } from '../types';
 
 type ChatRole = 'passenger' | 'admin' | 'owner';
@@ -552,6 +553,18 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
 
 // ─── Floating AI Chat ─────────────────────────────────────────────────────────
 interface ChatMsg { from: 'user' | 'ai'; text: string; time: string; }
+interface ChatAction {
+  type?: string;
+  params?: {
+    category?: string;
+    from?: string;
+    to?: string;
+    date?: string;
+    time?: string;
+    maxFare?: number;
+    auto?: number;
+  };
+}
 
 const QUICK_REPLIES = [
   'Find cheapest route to Mombasa',
@@ -620,9 +633,13 @@ const API_BASE = normalizeApiBase(RAW_API_BASE);
 
 async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole, sessionId: string) {
   try {
+    const token = localStorage.getItem('safiri_auth_token') || '';
     const response = await fetch(`${API_BASE}/api/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         text,
         language: lang,
@@ -643,14 +660,17 @@ async function fetchAiReply(text: string, lang: ChatLang, role: ChatRole, sessio
       '';
 
     const resolved = String(reply);
+    const action = (data?.data?.action || data?.action || null) as ChatAction | null;
     return {
       reply: resolved,
       fromBackend: Boolean(resolved),
+      action,
     };
   } catch {
     return {
       reply: '',
       fromBackend: false,
+      action: null,
     };
   }
 }
@@ -693,6 +713,7 @@ function now() {
 }
 
 export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
+  const navigate = useNavigate();
   const storageKey = `safiri_chat_session_id_${role}`;
   const chatSessionIdRef = useRef<string>('');
 
@@ -921,9 +942,42 @@ export function FloatingChat({ role = 'passenger' }: { role?: ChatRole }) {
     setAiBackendOnline(backendReply.fromBackend);
     const shouldAutoSpeak = voiceEnabled && (!autoVoiceOnMic || !!options?.fromVoice);
 
+    const executeChatAction = () => {
+      if (role !== 'passenger') return false;
+
+      const action = backendReply.action;
+      if (!action || action.type !== 'prefill_search_form') return false;
+
+      const p = action.params || {};
+      if (!p.from || !p.to || !p.date) return false;
+
+      const search = new URLSearchParams();
+      search.set('cat', p.category || 'bus');
+      search.set('from', p.from);
+      search.set('to', p.to);
+      search.set('date', p.date);
+      if (p.time) search.set('time', p.time);
+      if (typeof p.maxFare === 'number' && Number.isFinite(p.maxFare)) {
+        search.set('maxFare', String(Math.max(1, Math.round(p.maxFare))));
+      }
+      if (p.auto === 1) {
+        search.set('auto', '1');
+      }
+
+      navigate(`/passenger/search?${search.toString()}`);
+      return true;
+    };
+
     setTimeout(() => {
       setTyping(false);
-      setMsgs((m) => [...m, { from: 'ai', text: reply, time: now() }]);
+      const didExecuteAction = executeChatAction();
+      setMsgs((m) => [
+        ...m,
+        { from: 'ai', text: reply, time: now() },
+        ...(didExecuteAction
+          ? [{ from: 'ai', text: 'I prefilled your booking form from your account travel context. Review and continue.', time: now() } as ChatMsg]
+          : []),
+      ]);
       if (shouldAutoSpeak) {
         void speakReply(reply);
       }
