@@ -7,6 +7,7 @@ import { getPaymentStatusApi, initiateStkPushApi } from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
 
 type PayStatus = 'waiting' | 'success' | 'failed';
+const LAST_BOOKING_ID_KEY = 'safiri_last_booking_id';
 
 export default function Payment() {
   const navigate = useNavigate();
@@ -42,19 +43,25 @@ export default function Payment() {
       if (shouldSkipVerification) {
         const confirmedCode = booking.bookingRef || booking.bookingId;
         confirmBooking(confirmedCode, booking.bookingId, 'CONFIRMED');
+        if (booking.bookingId) {
+          localStorage.setItem(LAST_BOOKING_ID_KEY, booking.bookingId);
+        }
         setStatus('success');
         setPollingActive(false);
         toast('STK push sent. Skipping callback verification and generating your receipt.', 'success');
-        setTimeout(() => navigate('/passenger/ticket'), 900);
+        setTimeout(() => navigate(`/passenger/ticket?bookingId=${booking.bookingId}`), 900);
         return;
       }
 
       if (result.data?.payment?.status === 'SUCCESS') {
         confirmBooking(booking.bookingRef || result.data.payment.bookingId, result.data.payment.bookingId, 'CONFIRMED');
+        if (result.data.payment.bookingId) {
+          localStorage.setItem(LAST_BOOKING_ID_KEY, result.data.payment.bookingId);
+        }
         setStatus('success');
         setPollingActive(false);
         toast('STK push accepted and payment confirmed.', 'success');
-        setTimeout(() => navigate('/passenger/ticket'), 900);
+        setTimeout(() => navigate(`/passenger/ticket?bookingId=${result.data.payment.bookingId}`), 900);
         return;
       }
 
@@ -66,10 +73,13 @@ export default function Payment() {
         const payStatus = fallback.data.payment?.status;
         if (payStatus === 'SUCCESS' || fallback.data.bookingStatus === 'CONFIRMED') {
           confirmBooking(fallback.data.bookingCode, fallback.data.bookingId, fallback.data.bookingStatus);
+          if (fallback.data.bookingId) {
+            localStorage.setItem(LAST_BOOKING_ID_KEY, fallback.data.bookingId);
+          }
           setStatus('success');
           setPollingActive(false);
           toast('Payment already confirmed.', 'success');
-          setTimeout(() => navigate('/passenger/ticket'), 900);
+          setTimeout(() => navigate(`/passenger/ticket?bookingId=${fallback.data.bookingId}`), 900);
           return;
         }
       } catch {
@@ -111,10 +121,13 @@ export default function Payment() {
 
           if (payStatus === 'SUCCESS' || payment.data.bookingStatus === 'CONFIRMED') {
             confirmBooking(payment.data.bookingCode, payment.data.bookingId, payment.data.bookingStatus);
+            if (payment.data.bookingId) {
+              localStorage.setItem(LAST_BOOKING_ID_KEY, payment.data.bookingId);
+            }
             setStatus('success');
             setPollingActive(false);
             clearInterval(poll);
-            setTimeout(() => navigate('/passenger/ticket'), 900);
+            setTimeout(() => navigate(`/passenger/ticket?bookingId=${payment.data.bookingId}`), 900);
             return;
           }
 

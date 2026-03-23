@@ -19,6 +19,8 @@ const KNOWN_POINTS: Record<string, { lat: number; lon: number }> = {
   thika: { lat: -1.0332, lon: 37.0692 },
 };
 
+const LAST_BOOKING_ID_KEY = 'safiri_last_booking_id';
+
 function resolvePoint(name?: string | null) {
   if (!name) return KNOWN_POINTS.nairobi;
   const input = name.toLowerCase();
@@ -34,7 +36,7 @@ export default function Ticket() {
   const { booking, reset } = useBooking();
   const toast = useToast();
 
-  const bookingId = params.get('bookingId') || booking.bookingId;
+  const bookingId = params.get('bookingId') || booking.bookingId || localStorage.getItem(LAST_BOOKING_ID_KEY) || '';
   const [liveTicket, setLiveTicket] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
@@ -46,6 +48,9 @@ export default function Ticket() {
       try {
         const result = await getBookingByIdApi(bookingId);
         setLiveTicket(result.data);
+        if (result.data?.id) {
+          localStorage.setItem(LAST_BOOKING_ID_KEY, result.data.id);
+        }
       } catch (error) {
         toast((error as Error).message || 'Failed to load latest ticket details', 'warning');
       } finally {
@@ -94,6 +99,12 @@ export default function Ticket() {
       <div className="no-print">
         <Steps steps={['Search', 'Results', 'Seat', 'Confirm', 'Payment', 'Ticket']} current={5} />
       </div>
+
+      {!bookingId && (
+        <p className="text-sm" style={{ color: 'var(--danger)', marginBottom: 10 }}>
+          No booking reference found. Open your booking from My bookings to load a saved receipt.
+        </p>
+      )}
 
       {loading && <p className="text-sm text-muted mb-3 no-print">Refreshing ticket details...</p>}
 
