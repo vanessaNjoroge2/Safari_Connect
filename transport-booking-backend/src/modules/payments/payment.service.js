@@ -29,6 +29,10 @@ function shouldUseSafeDemoStkOnly() {
   return Boolean(env.PAYMENT_DEMO_SAFE_STK_ONLY);
 }
 
+function shouldRequireRealStkPush() {
+  return Boolean(env.MPESA_REQUIRE_REAL_STK);
+}
+
 export const initiateBookingPayment = async (userId, payload) => {
   const { bookingId, phoneNumber } = payload;
 
@@ -65,7 +69,26 @@ export const initiateBookingPayment = async (userId, payload) => {
   }
 
   let stkResponse;
-  if (shouldUseSafeDemoStkOnly()) {
+  const requireRealStkPush = shouldRequireRealStkPush();
+
+  if (requireRealStkPush) {
+    stkResponse = await initiateStkPush({
+      amount: Number(booking.amount),
+      phoneNumber,
+      accountReference: booking.bookingCode,
+      transactionDesc: `${booking.trip.route.origin} to ${booking.trip.route.destination}`,
+    });
+
+    if (
+      String(stkResponse?.ResponseCode || "") !== "0" ||
+      !stkResponse?.CheckoutRequestID ||
+      !stkResponse?.MerchantRequestID
+    ) {
+      const error = new Error("STK push request was not accepted by M-Pesa. Payment flow aborted.");
+      error.statusCode = 502;
+      throw error;
+    }
+  } else if (shouldUseSafeDemoStkOnly()) {
     logWarn("payment.demo_safe_stk_only", {
       userId,
       bookingId,
@@ -111,7 +134,9 @@ export const initiateBookingPayment = async (userId, payload) => {
     checkoutRequestId: stkResponse.CheckoutRequestID,
     merchantRequestId: stkResponse.MerchantRequestID,
     status: "PENDING",
-    aiAnalysis: shouldUseSafeDemoStkOnly()
+    aiAnalysis: requireRealStkPush
+      ? "AI payment analysis: real STK push accepted by provider. Callback verification intentionally skipped for demo completion."
+      : shouldUseSafeDemoStkOnly()
       ? "AI payment analysis: safe demo STK mode used. No real charge request was sent to external payment rails."
       : "AI payment analysis: STK push initiated. Track callback outcome; keep booking in pending state until payment success is confirmed.",
   };
@@ -129,7 +154,7 @@ export const initiateBookingPayment = async (userId, payload) => {
     });
   }
 
-  const skipPaymentVerification = shouldUseSafeDemoStkOnly() || env.PAYMENT_DEMO_AUTO_SUCCESS;
+  const skipPaymentVerification = requireRealStkPush || shouldUseSafeDemoStkOnly() || env.PAYMENT_DEMO_AUTO_SUCCESS;
 
   // Demo-safe mode: once STK push is accepted, complete payment immediately
   // so receipt flow can continue without callback verification.
@@ -176,6 +201,7 @@ export const initiateBookingPayment = async (userId, payload) => {
     autoCompleted: skipPaymentVerification,
     simulated: Boolean(stkResponse?.simulated) || skipPaymentVerification,
     safeDemoMode: shouldUseSafeDemoStkOnly(),
+    realStkSent: requireRealStkPush,
     skipPaymentVerification,
   };
 };
