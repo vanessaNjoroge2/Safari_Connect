@@ -58,7 +58,8 @@ export default function Search() {
   const [isSearching, setIsSearching] = useState(false);
   const autoTriggeredRef = useRef(false);
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const maxFareParam = Number(params.get('maxFare'));
+  const maxFareRaw = params.get('maxFare');
+  const maxFareParam = maxFareRaw && maxFareRaw.trim() ? Number(maxFareRaw) : NaN;
   const parsedMaxFare = Number.isFinite(maxFareParam) ? maxFareParam : undefined;
 
   const [form, setForm] = useState<SearchQuery>({
