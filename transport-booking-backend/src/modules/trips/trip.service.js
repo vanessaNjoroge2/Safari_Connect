@@ -118,6 +118,77 @@ export const getMyTrips = async (userId) => {
 export const searchTrips = async (query) => {
   const { categoryId, category, origin, destination, date, time, tripType } = query;
 
+  const NAIROBI_UTC_OFFSET_HOURS = 3;
+  const getNairobiTimeLabel = (value) =>
+    new Date(value).toLocaleTimeString("en-KE", {
+      timeZone: "Africa/Nairobi",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  const toMinutes = (hhmm) => {
+    const [h, m] = String(hhmm || "00:00")
+      .split(":")
+      .map((part) => Number(part));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+    return h * 60 + m;
+  };
+
+  const normalizePlace = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\b(cbd|town|city|center|centre|bus\s*park|stage|terminal|downtown)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const placeMatches = (routePlace, queryPlace) => {
+    const routeNorm = normalizePlace(routePlace);
+    const queryNorm = normalizePlace(queryPlace);
+    if (!queryNorm) return true;
+    if (!routeNorm) return false;
+
+    if (routeNorm.includes(queryNorm) || queryNorm.includes(routeNorm)) return true;
+
+    const routeTokens = routeNorm.split(" ").filter((token) => token.length >= 3);
+    const queryTokens = queryNorm.split(" ").filter((token) => token.length >= 3);
+    if (!queryTokens.length) return routeNorm.includes(queryNorm);
+
+    return queryTokens.every((token) =>
+      routeTokens.some((routeToken) =>
+        routeToken.includes(token) || token.includes(routeToken),
+      ),
+    );
+  };
+
+  const parseDateInput = (rawDate) => {
+    const value = String(rawDate || "").trim();
+    if (!value) return null;
+
+    // yyyy-mm-dd
+    let match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      return {
+        year: Number(match[1]),
+        month: Number(match[2]),
+        day: Number(match[3]),
+      };
+    }
+
+    // dd/mm/yyyy
+    match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+      return {
+        year: Number(match[3]),
+        month: Number(match[2]),
+        day: Number(match[1]),
+      };
+    }
+
+    return null;
+  };
+
   const where = {
     status: "SCHEDULED",
   };
@@ -146,25 +217,20 @@ export const searchTrips = async (query) => {
         };
   }
 
-  if (origin || destination) {
-    where.route = {};
-    if (origin) {
-      where.route.origin = {
-        contains: origin,
-        mode: "insensitive",
-      };
-    }
-    if (destination) {
-      where.route.destination = {
-        contains: destination,
-        mode: "insensitive",
-      };
-    }
-  }
-
   if (date) {
-    const startOfDay = new Date(`${date}T00:00:00.000Z`);
-    const endOfDay = new Date(`${date}T23:59:59.999Z`);
+    const parsedDate = parseDateInput(date);
+    if (!parsedDate) {
+      throw new Error("Invalid date format. Use yyyy-mm-dd");
+    }
+
+    const { year, month, day } = parsedDate;
+
+    const startOfDay = new Date(
+      Date.UTC(year, month - 1, day, -NAIROBI_UTC_OFFSET_HOURS, 0, 0, 0),
+    );
+    const endOfDay = new Date(
+      Date.UTC(year, month - 1, day, 23 - NAIROBI_UTC_OFFSET_HOURS, 59, 59, 999),
+    );
 
     where.departureTime = {
       gte: startOfDay,
@@ -200,10 +266,22 @@ export const searchTrips = async (query) => {
 
   let filteredTrips = trips;
 
-  if (time) {
+  if (origin || destination) {
     filteredTrips = filteredTrips.filter((trip) => {
-      const tripTime = trip.departureTime.toISOString().slice(11, 16);
-      return tripTime >= time;
+      const originOk = origin ? placeMatches(trip.route.origin, origin) : true;
+      const destinationOk = destination
+        ? placeMatches(trip.route.destination, destination)
+        : true;
+
+      return originOk && destinationOk;
+    });
+  }
+
+  if (time) {
+    const thresholdMinutes = toMinutes(time);
+    filteredTrips = filteredTrips.filter((trip) => {
+      const tripTimeLabel = getNairobiTimeLabel(trip.departureTime);
+      return toMinutes(tripTimeLabel) >= thresholdMinutes;
     });
   }
 

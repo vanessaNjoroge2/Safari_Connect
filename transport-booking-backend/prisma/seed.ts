@@ -29,10 +29,12 @@ function addMinutes(date: Date, minutes: number) {
 
 function getDatesFromJanuaryToToday() {
   const dates: Date[] = [];
-  const today = new Date();
-  const start = new Date(today.getFullYear(), 0, 1);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
 
-  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(start); d < todayStart; d.setDate(d.getDate() + 1)) {
     dates.push(new Date(d));
   }
 
@@ -97,6 +99,8 @@ function startOfFutureDay(daysAhead: number, hour: number, minute = 0) {
   d.setHours(hour, minute, 0, 0);
   return d;
 }
+
+const BUSINESS_HOUR_SLOTS = [8, 10, 12, 14, 16, 18] as const;
 
 async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
@@ -463,9 +467,11 @@ async function main() {
         const bus = johnBuses[(dayAhead + routeIndex) % johnBuses.length];
 
         const departureSlots =
-          route.origin === "Nairobi" && route.destination === "Nakuru"
-            ? [6, 9, 14, 18]
-            : [7, 13];
+          dayAhead <= 2
+            ? [...BUSINESS_HOUR_SLOTS]
+            : route.origin === "Nairobi" && route.destination === "Nakuru"
+              ? [6, 9, 14, 18]
+              : [7, 13];
 
         for (const hour of departureSlots) {
           const departureTime = startOfFutureDay(dayAhead, hour);
@@ -555,6 +561,126 @@ async function main() {
       }
     }
   }
+
+  // 7a. Deterministic vehicle schedule for today, tomorrow, and day-after-tomorrow (8am to 6pm)
+  const windowStart = startOfFutureDay(0, 0);
+  const windowEnd = startOfFutureDay(3, 0);
+  const allowedHours = new Set<number>([...BUSINESS_HOUR_SLOTS]);
+
+  const windowTrips = await prisma.trip.findMany({
+    where: {
+      departureTime: {
+        gte: windowStart,
+        lt: windowEnd,
+      },
+    },
+    select: {
+      id: true,
+      departureTime: true,
+      bookings: {
+        select: {
+          id: true,
+          payment: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const offWindowTripIds: string[] = [];
+  const offWindowBookingIds: string[] = [];
+  const offWindowPaymentIds: string[] = [];
+
+  for (const trip of windowTrips) {
+    const hour = new Date(trip.departureTime).getHours();
+    if (allowedHours.has(hour)) continue;
+
+    offWindowTripIds.push(trip.id);
+    for (const booking of trip.bookings) {
+      offWindowBookingIds.push(booking.id);
+      if (booking.payment?.id) {
+        offWindowPaymentIds.push(booking.payment.id);
+      }
+    }
+  }
+
+  if (offWindowPaymentIds.length > 0) {
+    await prisma.payment.deleteMany({
+      where: {
+        id: { in: offWindowPaymentIds },
+      },
+    });
+  }
+
+  if (offWindowBookingIds.length > 0) {
+    await prisma.booking.deleteMany({
+      where: {
+        id: { in: offWindowBookingIds },
+      },
+    });
+  }
+
+  if (offWindowTripIds.length > 0) {
+    await prisma.trip.deleteMany({
+      where: {
+        id: { in: offWindowTripIds },
+      },
+    });
+  }
+
+  console.log(`Pruned off-window trips in 3-day window: ${offWindowTripIds.length}`);
+
+  const allActiveBuses = await prisma.bus.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let futureWindowTripsCreated = 0;
+  for (let dayAhead = 0; dayAhead <= 2; dayAhead++) {
+    for (let busIndex = 0; busIndex < allActiveBuses.length; busIndex++) {
+      const bus = allActiveBuses[busIndex];
+
+      for (let slotIndex = 0; slotIndex < BUSINESS_HOUR_SLOTS.length; slotIndex++) {
+        const departureHour = BUSINESS_HOUR_SLOTS[slotIndex];
+        const route = routes[(busIndex + dayAhead + slotIndex) % routes.length];
+        const departureTime = startOfFutureDay(dayAhead, departureHour);
+        const arrivalTime = addMinutes(departureTime, route.estimatedTime || 180);
+
+        const existingTrip = await prisma.trip.findFirst({
+          where: {
+            saccoId: bus.saccoId,
+            busId: bus.id,
+            routeId: route.id,
+            departureTime,
+          },
+        });
+
+        if (existingTrip) continue;
+
+        await prisma.trip.create({
+          data: {
+            saccoId: bus.saccoId,
+            busId: bus.id,
+            routeId: route.id,
+            tripType: "ONE_WAY",
+            departureTime,
+            arrivalTime,
+            basePrice: new Prisma.Decimal(randomFrom([900, 1200, 1500, 1800, 2200])),
+            aiAnalysis:
+              "AI trip analysis: deterministic schedule seeded for today/tomorrow/day+2 in business-hour window (08:00-18:00).",
+            status: "SCHEDULED",
+          },
+        });
+
+        futureWindowTripsCreated++;
+      }
+    }
+  }
+
+  console.log(`Future window trips (today+2 days, 08:00-18:00) created: ${futureWindowTripsCreated}`);
 
   // 8. Bookings + Payments
   for (const trip of createdTrips) {
@@ -675,8 +801,8 @@ async function main() {
   const demoTripsSeed = [
     {
       code: "TRIP-DEMO-RECO",
-      departureTime: startOfFutureDay(1, 6),
-      arrivalTime: startOfFutureDay(1, 9),
+      departureTime: startOfFutureDay(1, 8),
+      arrivalTime: startOfFutureDay(1, 11),
       basePrice: new Prisma.Decimal(1500),
       status: "SCHEDULED" as TripStatus,
     },
@@ -689,8 +815,8 @@ async function main() {
     },
     {
       code: "TRIP-DEMO-RISK",
-      departureTime: startOfFutureDay(2, 5),
-      arrivalTime: startOfFutureDay(2, 8),
+      departureTime: startOfFutureDay(2, 8),
+      arrivalTime: startOfFutureDay(2, 11),
       basePrice: new Prisma.Decimal(2100),
       status: "SCHEDULED" as TripStatus,
     },
@@ -756,7 +882,7 @@ async function main() {
       });
     }
 
-    const matatuDemoDeparture = startOfFutureDay(1, 7);
+    const matatuDemoDeparture = startOfFutureDay(1, 8);
     const existingMatatuDemoTrip = await prisma.trip.findFirst({
       where: {
         saccoId: matatuSacco.id,
