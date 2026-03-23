@@ -129,16 +129,18 @@ export const initiateBookingPayment = async (userId, payload) => {
     });
   }
 
-  // Demo mode: once STK push is accepted, complete payment immediately
-  // so end-to-end flows can be showcased without waiting for callbacks.
-  if (env.PAYMENT_DEMO_AUTO_SUCCESS) {
+  const skipPaymentVerification = shouldUseSafeDemoStkOnly() || env.PAYMENT_DEMO_AUTO_SUCCESS;
+
+  // Demo-safe mode: once STK push is accepted, complete payment immediately
+  // so receipt flow can continue without callback verification.
+  if (skipPaymentVerification) {
     payment = await prisma.payment.update({
       where: { id: payment.id },
       data: {
         status: "SUCCESS",
         transactionRef: createDemoReceipt(),
         aiAnalysis:
-          "AI payment analysis: demo mode auto-success applied after STK acceptance. Transaction verification was skipped by configuration.",
+          "AI payment analysis: demo safe-mode auto-success applied after STK acceptance. Callback verification was intentionally skipped.",
       },
     });
 
@@ -163,7 +165,7 @@ export const initiateBookingPayment = async (userId, payload) => {
           confirmedAt: new Date(),
         },
         aiAnalysis:
-          "AI booking analysis: demo mode payment success applied immediately after STK acceptance.",
+          "AI booking analysis: demo safe-mode payment success applied immediately after STK acceptance.",
       },
     });
   }
@@ -171,9 +173,10 @@ export const initiateBookingPayment = async (userId, payload) => {
   return {
     payment,
     stkResponse,
-    autoCompleted: env.PAYMENT_DEMO_AUTO_SUCCESS,
-    simulated: Boolean(stkResponse?.simulated) || env.PAYMENT_DEMO_AUTO_SUCCESS,
+    autoCompleted: skipPaymentVerification,
+    simulated: Boolean(stkResponse?.simulated) || skipPaymentVerification,
     safeDemoMode: shouldUseSafeDemoStkOnly(),
+    skipPaymentVerification,
   };
 };
 

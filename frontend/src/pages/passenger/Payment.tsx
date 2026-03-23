@@ -32,6 +32,23 @@ export default function Payment() {
     try {
       const result = await initiateStkPushApi({ bookingId: booking.bookingId, phoneNumber: booking.phone });
 
+      const shouldSkipVerification = Boolean(
+        result.data?.skipPaymentVerification ||
+        result.data?.autoCompleted ||
+        result.data?.simulated ||
+        result.data?.safeDemoMode,
+      );
+
+      if (shouldSkipVerification) {
+        const confirmedCode = booking.bookingRef || booking.bookingId;
+        confirmBooking(confirmedCode, booking.bookingId, 'CONFIRMED');
+        setStatus('success');
+        setPollingActive(false);
+        toast('STK push sent. Skipping callback verification and generating your receipt.', 'success');
+        setTimeout(() => navigate('/passenger/ticket'), 900);
+        return;
+      }
+
       if (result.data?.payment?.status === 'SUCCESS') {
         confirmBooking(booking.bookingRef || result.data.payment.bookingId, result.data.payment.bookingId, 'CONFIRMED');
         setStatus('success');
